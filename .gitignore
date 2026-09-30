@@ -1,0 +1,10 @@
+node_modules
+dist
+.env
+.env.local
+*.pdf
+.DS_Store
+*.tsbuildinfo
+
+# Personal statements must never land in the repo
+*.xlsx

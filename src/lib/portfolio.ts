@@ -102,6 +102,9 @@ export interface SchemeSummary {
   value: number;
   cost: number;
   xirr: number | null;
+  transactions: MFTransaction[];
+  /** Valuation date. */
+  asOf: string;
   /** False when the statement starts after the first purchase, so XIRR can't be computed honestly. */
   fullHistory: boolean;
 }
@@ -119,7 +122,7 @@ export interface PortfolioSummary {
   historyFrom?: string;
 }
 
-const schemeKey = (name: string) => name.toLowerCase().replace(/\s+/g, " ").trim();
+export const schemeKey = (name: string) => name.toLowerCase().replace(/\s+/g, " ").trim();
 
 /** Cashflows from the investor's point of view: purchases negative, money back positive. */
 export function flowOf(t: MFTransaction): number {
@@ -211,6 +214,8 @@ export function summarize(statements: CASStatement[]): PortfolioSummary {
       value: g.value,
       cost: g.cost,
       xirr: rate,
+      transactions: g.txns,
+      asOf: g.asOf,
       fullHistory,
     });
   }

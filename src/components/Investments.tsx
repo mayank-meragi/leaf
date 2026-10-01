@@ -10,12 +10,23 @@ import type { ViewProps } from "@/App";
 import { statementPath } from "@/lib/db";
 import { amcLabel, day, money, pct } from "@/lib/format";
 import { parseCAS } from "@/lib/parsers/cas/parse";
-import { isCompleteStatement, summarize } from "@/lib/portfolio";
+import { capitalGains } from "@/lib/capitalGains";
+import { pnl as computePnL } from "@/lib/pnl";
+import { isCompleteStatement, schemeKey, summarize } from "@/lib/portfolio";
+import { sips } from "@/lib/sips";
 import { cn } from "@/lib/utils";
 import Allocation from "./Allocation";
+import CapitalGains from "./CapitalGains";
+import SchemeDetail from "./SchemeDetail";
+import SipTracker from "./SipTracker";
 
 export default function Investments({ store, data, reload }: ViewProps) {
   const summary = useMemo(() => summarize(data.statements), [data.statements]);
+  const cg = useMemo(() => capitalGains(data.statements), [data.statements]);
+  const pnl = useMemo(() => computePnL(data.statements, cg), [data.statements, cg]);
+  const sipPlans = useMemo(() => sips(data.statements).plans, [data.statements]);
+  const [selected, setSelected] = useState<string | null>(null);
+  const detail = summary.schemes.find((x) => x.name === selected) ?? null;
   const [busy, setBusy] = useState(false);
   // A PDF waiting for a password the saved one didn't open.
   const [locked, setLocked] = useState<File | null>(null);
@@ -107,6 +118,22 @@ export default function Investments({ store, data, reload }: ViewProps) {
             />
           </div>
 
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Stat
+              label="Unrealised gain"
+              value={money(summary.value - summary.cost)}
+              sub="On what you still hold"
+              tone={summary.value >= summary.cost ? "positive" : "negative"}
+            />
+            <Stat
+              label="Realised gain"
+              value={money(pnl.realised)}
+              sub={cg.unmatched.length ? "Excludes sales of units bought before the statement" : "From redemptions and switches, all time"}
+              tone={pnl.realised >= 0 ? "positive" : "negative"}
+            />
+            <Stat label="Dividends" value={money(pnl.dividends)} sub="Paid out or reinvested" />
+          </div>
+
           {partial.length > 0 && (
             <div className="flex gap-3 rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm">
               <InfoIcon className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
@@ -138,7 +165,7 @@ export default function Investments({ store, data, reload }: ViewProps) {
                 </TableHeader>
                 <TableBody>
                   {summary.schemes.map((r) => (
-                    <TableRow key={r.name}>
+                    <TableRow key={r.name} className="cursor-pointer" onClick={() => setSelected(r.name)}>
                       <TableCell className="pl-6 whitespace-normal">
                         <div className="font-medium">{r.name}</div>
                         <div className="text-xs text-muted-foreground">
@@ -166,6 +193,10 @@ export default function Investments({ store, data, reload }: ViewProps) {
               </Table>
             </CardContent>
           </Card>
+
+          <SipTracker statements={data.statements} onOpen={(name) => setSelected(summary.schemes.find((x) => schemeKey(x.name) === schemeKey(name))?.name ?? null)} />
+
+          <CapitalGains statements={data.statements} />
         </>
       ) : (
         <Card className="py-16 text-center text-sm text-muted-foreground">
@@ -187,6 +218,14 @@ export default function Investments({ store, data, reload }: ViewProps) {
           </p>
         </Card>
       )}
+
+      <SchemeDetail
+        scheme={detail}
+        cg={cg}
+        pnl={pnl}
+        plan={detail ? sipPlans.find((p) => schemeKey(p.scheme) === schemeKey(detail.name)) : undefined}
+        onClose={() => setSelected(null)}
+      />
 
       <Dialog
         open={!!locked}

@@ -111,3 +111,80 @@ export function financialYear(iso: string): string {
   const start = m >= 4 ? y : y - 1;
   return `${start}-${String((start + 1) % 100).padStart(2, "0")}`;
 }
+
+// ---- Duplicates, merging and deleting ----
+
+/** Last digits of the account / PRAN / UAN reference, or "" when there aren't enough to go on. */
+export const accountTail = (a: WealthAccount) => {
+  const d = (a.ref ?? "").replace(/\D/g, "");
+  return d.length >= 3 ? d.slice(-4) : "";
+};
+
+// NPS accounts with an id derived from the PRAN and tier ("nps-6595-t1"): different tiers are different accounts.
+const tierOf = (a: WealthAccount) => /^nps-\d{3,6}-(t[12])$/.exec(a.id)?.[1] ?? "";
+
+/**
+ * Accounts that look like one account tracked twice: same kind and same reference digits. For NPS, Tier I and Tier II
+ * of one PRAN are separate; an account without a tier in its id (made by uploading a statement) is grouped with Tier I.
+ */
+export function duplicateGroups(accounts: WealthAccount[]): WealthAccount[][] {
+  const groups = new Map<string, WealthAccount[]>();
+  for (const a of accounts) {
+    const tail = accountTail(a);
+    if (!tail) continue;
+    const key = `${a.kind}|${tail}|${a.kind === "nps" ? tierOf(a) || "t1" : ""}`;
+    groups.set(key, [...(groups.get(key) ?? []), a]);
+  }
+  return [...groups.values()].filter((g) => g.length > 1);
+}
+
+export interface WealthData {
+  accounts: WealthAccount[];
+  snapshots: WealthSnapshot[];
+  flows: WealthFlow[];
+}
+
+/** Which of a duplicate group to keep: the one the sync keeps feeding (derived id), else the best documented. */
+export function pickSurvivor(group: WealthAccount[], snapshots: WealthSnapshot[]): WealthAccount {
+  const count = (a: WealthAccount) => snapshots.filter((s) => s.account === a.id).length;
+  return [...group].sort((a, b) => Number(!!tierOf(b)) - Number(!!tierOf(a)) || count(b) - count(a))[0];
+}
+
+/**
+ * Folds `drop` accounts into `keep`. Their balances and contributions move across; where both have a balance for the
+ * same date the survivor's wins (the same figure arrives from two documents). Nothing is lost that isn't a duplicate.
+ */
+export function mergeAccounts(d: WealthData, keep: string, drop: string[]): WealthData {
+  const dropped = new Set(drop);
+  const own = d.snapshots.filter((s) => !dropped.has(s.account));
+  const incoming = d.snapshots.filter((s) => dropped.has(s.account)).map((s) => ({ ...s, account: keep }));
+  const seen = new Set<string>();
+  // The survivor's own balances go first, so they win a tie on the same date.
+  const snapshots = [...own, ...incoming].filter((s) => {
+    const k = `${s.account}|${s.date}`;
+    return seen.has(k) ? false : (seen.add(k), true);
+  });
+
+  const flowSeen = new Set<string>();
+  const flows = d.flows
+    .map((f) => (dropped.has(f.account) ? { ...f, account: keep } : f))
+    .filter((f) => {
+      const k = `${f.account}|${f.date}|${f.amount}|${f.kind}`;
+      return flowSeen.has(k) ? false : (flowSeen.add(k), true);
+    });
+
+  return {
+    accounts: d.accounts.filter((a) => !dropped.has(a.id)),
+    snapshots: snapshots.sort((a, b) => b.date.localeCompare(a.date)),
+    flows,
+  };
+}
+
+/** Removes an account along with its balances and contributions. */
+export function removeAccount(d: WealthData, id: string): WealthData {
+  return {
+    accounts: d.accounts.filter((a) => a.id !== id),
+    snapshots: d.snapshots.filter((s) => s.account !== id),
+    flows: d.flows.filter((f) => f.account !== id),
+  };
+}

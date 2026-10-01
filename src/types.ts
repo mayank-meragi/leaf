@@ -35,6 +35,8 @@ export interface LeafConfig {
   /** AMFI scheme code of the index fund used as the benchmark for mutual fund returns. */
   benchmark?: number;
   goals?: Goal[];
+  /** Ids of tracked accounts the user deleted, so a later Sync doesn't recreate them from the same emails. */
+  deletedAccounts?: string[];
 }
 
 export interface Goal {

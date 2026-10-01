@@ -2,6 +2,7 @@
 // monthly "Transaction Statement" PDF (current holding value).
 
 import type { WealthAccount } from "@/types";
+import { accountTail } from "./wealth";
 
 export interface NpsContribution {
   tier: 1 | 2;
@@ -26,4 +27,23 @@ export const npsAccountId = (pranTail: string, tier: 1 | 2) => `nps-${pranTail}-
 
 export function npsAccount(pranTail: string, tier: 1 | 2): WealthAccount {
   return { id: npsAccountId(pranTail, tier), kind: "nps", name: `NPS Tier ${tier === 1 ? "I" : "II"}`, institution: "Protean CRA", ref: `PRAN ••${pranTail}` };
+}
+
+/** Ids the sync derives from a PRAN and tier, as opposed to the random ones given to accounts made by hand or by uploading a statement. */
+export const TIER_ID = /^nps-\d{3,6}-t[12]$/;
+
+/**
+ * The account an NPS contribution or statement belongs to. Prefers the one with the derived id, but an account made
+ * earlier by uploading a statement (random id, same PRAN digits) is the same account, so use it rather than a second one.
+ * Uploaded statements are Tier I, so only Tier I may claim one.
+ */
+export function resolveNpsAccount(accounts: WealthAccount[], pranTail: string, tier: 1 | 2): WealthAccount {
+  const derived = npsAccount(pranTail, tier);
+  const exact = accounts.find((a) => a.id === derived.id);
+  if (exact) return exact;
+  if (tier === 1) {
+    const uploaded = accounts.find((a) => a.kind === "nps" && !TIER_ID.test(a.id) && accountTail(a) === pranTail);
+    if (uploaded) return uploaded;
+  }
+  return derived;
 }

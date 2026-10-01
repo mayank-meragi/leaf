@@ -17,6 +17,22 @@ const blank: DocExtraction = {
 };
 const src = { kind: "upload", fileName: "x.pdf" } as const;
 
+describe("applyDocument: NPS", () => {
+  const stmt = { ...blank, kind: "nps_statement" as const, institution: "Protean CRA", reference: "PRAN 1113536595", asOfDate: "2026-08-31", balance: 545675.7 };
+
+  it("gives an uploaded statement the same account id the Gmail sync derives from the PRAN", () => {
+    const r = applyDocument(stmt, empty, src, "2026-10-01");
+    expect(r.files[PATHS.wealthAccounts]).toMatchObject([{ id: "nps-6595-t1", kind: "nps", ref: "PRAN ••6595" }]);
+  });
+
+  it("lands on the sync's existing account rather than adding a second", () => {
+    const synced = { id: "nps-6595-t1", kind: "nps", name: "NPS Tier I", institution: "Protean CRA", ref: "PRAN ••6595" } as const;
+    const r = applyDocument(stmt, { ...empty, wealthAccounts: [synced] }, src, "2026-10-01");
+    expect(r.files[PATHS.wealthAccounts]).toHaveLength(1);
+    expect(r.files[PATHS.wealthSnapshots]).toMatchObject([{ account: "nps-6595-t1", value: 545675.7 }]);
+  });
+});
+
 describe("applyDocument", () => {
   it("creates an EPF account from a passbook, then updates it from the next one", () => {
     const first = applyDocument({ ...blank, kind: "epf_passbook", institution: "EPFO", reference: "UAN 1000 2000 4321", asOfDate: "2026-03-31", balance: 500000 }, empty, src, "2026-10-01");

@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import type { ViewProps } from "@/App";
 import { DEFAULT_MODEL } from "@/lib/ai/extract";
 import { connectAccount, googleConfigured, needsSignIn, setGoogleClientId, signIn } from "@/lib/google/auth";
+import ExportCard from "./ExportCard";
 import FindSenders from "./FindSenders";
 import { clearSettings, saveSettings, type Settings } from "@/lib/settings";
 import { instruments, KIND_LABEL, KIND_ORDER, withInstrumentMeta } from "@/lib/instruments";
@@ -286,6 +287,7 @@ export default function SettingsView({ store, data, setData, settings, onSetting
 
       <DocumentPasswords config={config} busy={busy} onSave={(next) => saveConfig(next, "Update document passwords")} />
 
+      <ExportCard data={data} store={store} />
       <OtherDevices config={config} settings={settings} busy={busy} onSaveConfig={saveConfig} onSettings={onSettings} />
 
       <Card>

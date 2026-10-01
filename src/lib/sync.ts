@@ -16,7 +16,8 @@ import type {
 import type { DocumentReader } from "./ai/documents";
 import { knownPasswords, loadBytes, mergePayslips, NeedsPasswordError, payrollRecord } from "./documents";
 import { parseSalaryCredit, payMonthHint } from "./payroll";
-import { npsAccount, parseNpsContribution } from "./nps";
+import { parseNpsContribution, resolveNpsAccount } from "./nps";
+import { accountTail } from "./wealth";
 import type { ExtractedTxn, Extractor } from "./ai/extract";
 import { applyRules } from "./categories";
 import { CARD_PAYMENTS_PATH, CARD_STATEMENTS_PATH, PATHS, monthShards, statementPath, type LeafData } from "./db";
@@ -210,8 +211,11 @@ export async function sync(
         const emails = (await fetchAll(npsIds, "Fetching NPS emails")).sort((a, b) => b.date.getTime() - a.date.getTime());
         let statementsRead = 0;
         let locked = 0;
+        const deleted = new Set(config.deletedAccounts ?? []);
+        /** The account for this PRAN and tier, created if it's new. Null if you deleted it: don't bring it back. */
         const ensure = (tail: string, tier: 1 | 2) => {
-          const acc = npsAccount(tail, tier);
+          const acc = resolveNpsAccount(wealthAccounts, tail, tier);
+          if (deleted.has(acc.id)) return null;
           if (!wealthAccounts.some((a) => a.id === acc.id)) wealthAccounts.push(acc);
           return acc.id;
         };
@@ -219,7 +223,8 @@ export async function sync(
           const src = { kind: "gmail" as const, account: email, messageId: e.id };
           const c = parseNpsContribution(e.text);
           if (c) {
-            newFlows.push({ account: ensure(c.pranTail, c.tier), date: c.date, amount: c.amount, kind: "contribution", source: src });
+            const account = ensure(c.pranTail, c.tier);
+            if (account) newFlows.push({ account, date: c.date, amount: c.amount, kind: "contribution", source: src });
             continue;
           }
           const pdf = e.attachments.find((a) => a.filename.toLowerCase().endsWith(".pdf"));
@@ -232,10 +237,11 @@ export async function sync(
             log(`Reading NPS statement ${statementsRead}…`);
             const x = await reader.read(input, pdf.filename);
             if (x.kind !== "nps_statement" || !(x.balance > 0)) continue;
-            const known = [...new Set(wealthAccounts.filter((a) => a.kind === "nps").map((a) => a.id.split("-")[1]))];
+            const known = [...new Set(wealthAccounts.filter((a) => a.kind === "nps").map(accountTail).filter(Boolean))];
             const tail = x.reference.replace(/\D/g, "").slice(-4) || (known.length === 1 ? known[0] : "");
             if (!tail) continue;
-            newSnapshots.push({ account: ensure(tail, 1), date: isoDay(x.asOfDate) ?? e.date.toISOString().slice(0, 10), value: x.balance, source: src });
+            const account = ensure(tail, 1);
+            if (account) newSnapshots.push({ account, date: isoDay(x.asOfDate) ?? e.date.toISOString().slice(0, 10), value: x.balance, source: src });
           } catch (err) {
             if (err instanceof NeedsPasswordError) locked++;
             else warnings.push(`NPS statement “${e.subject.slice(0, 50)}”: ${(err as Error).message}`);

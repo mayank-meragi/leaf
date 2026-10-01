@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { AlertTriangleIcon, PencilIcon, PlusIcon, ShieldIcon } from "lucide-react";
+import { AlertTriangleIcon, MergeIcon, PencilIcon, PlusIcon, ShieldIcon, Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,11 +13,11 @@ import type { ViewProps } from "@/App";
 import { PATHS } from "@/lib/db";
 import { manualBalance } from "@/lib/documents";
 import { day, money } from "@/lib/format";
-import { cardRecords, instruments, sourceStatus } from "@/lib/instruments";
-import { summarize } from "@/lib/portfolio";
+import { computeNetWorth } from "@/lib/networth";
 import { cn } from "@/lib/utils";
-import { netWorth, newAccountId, WEALTH_KINDS, wealthLines, type NetWorthLine } from "@/lib/wealth";
+import { duplicateGroups, mergeAccounts, newAccountId, pickSurvivor, removeAccount, WEALTH_KINDS, type NetWorthLine } from "@/lib/wealth";
 import type { WealthAccount, WealthKind } from "@/types";
+import ConfirmDialog from "./ConfirmDialog";
 import ImportDocument from "./ImportDocument";
 import WhereToGet from "./WhereToGet";
 
@@ -26,31 +26,7 @@ export default function NetWorth(props: ViewProps) {
   const today = new Date().toISOString().slice(0, 10);
   const [editing, setEditing] = useState<{ account: WealthAccount; isNew: boolean } | null>(null);
 
-  const nw = useMemo(() => {
-    const mf = summarize(data.statements);
-    const sources = instruments(data.transactions, data.config, cardRecords(data.cardStatements, data.cardPayments));
-    const status = (key: string) => sourceStatus(key, data.transactions, data.cardStatements, data.cardPayments, today);
-    const wealth = wealthLines(data.wealthAccounts, data.wealthSnapshots, data.wealthFlows, today);
-
-    const banks: NetWorthLine[] = sources
-      .filter((s) => s.kind === "bank_account")
-      .flatMap((s) => {
-        const b = status(s.key).balance;
-        const note = b?.adjusted ? `balance stated ${day(b.reportedOn)}, plus ${b.adjusted} transactions since` : "from alerts";
-        return b ? [{ key: s.key, label: s.label, group: "Bank accounts", value: b.amount, asOf: b.asOf, stale: false, note }] : [];
-      });
-    const cards: NetWorthLine[] = sources
-      .filter((s) => s.kind === "credit_card" || s.kind === "card")
-      .flatMap((s) => {
-        const st = status(s.key);
-        const billDue = st.bill && st.bill.state !== "paid" ? Math.max(0, st.bill.totalDue - st.bill.paid) : 0;
-        const due = billDue + Math.max(0, st.unbilled?.amount ?? 0);
-        return due > 0 ? [{ key: s.key, label: s.label, group: "Credit cards", value: due, asOf: today, note: billDue ? "unpaid bill + unbilled" : "unbilled" }] : [];
-      });
-    const mfLine: NetWorthLine[] = mf.value ? [{ key: "mf", label: "Mutual funds", group: "Mutual funds", value: mf.value, asOf: mf.asOf, note: "from CAS" }] : [];
-    const missingBalances = sources.filter((s) => s.kind === "bank_account" && !status(s.key).balance).map((s) => s.label);
-    return { ...netWorth({ assets: [...mfLine, ...banks, ...wealth.assets], liabilities: [...cards, ...wealth.liabilities] }), missingBalances };
-  }, [data, today]);
+  const nw = useMemo(() => computeNetWorth(data, today), [data, today]);
 
   const assetsTotal = nw.assets.reduce((s, x) => s + x.value, 0);
   const liabTotal = nw.liabilities.reduce((s, x) => s + x.value, 0);
@@ -60,6 +36,44 @@ export default function NetWorth(props: ViewProps) {
     return [...m.entries()].sort((a, b) => b[1] - a[1]);
   }, [nw.assets]);
   const accountById = new Map(data.wealthAccounts.map((a) => [a.id, a]));
+  const duplicates = useMemo(() => duplicateGroups(data.wealthAccounts), [data.wealthAccounts]);
+  const [busy, setBusy] = useState(false);
+
+  const wealthFiles = (d: { accounts: WealthAccount[]; snapshots: typeof data.wealthSnapshots; flows: typeof data.wealthFlows }) => ({
+    [PATHS.wealthAccounts]: d.accounts,
+    [PATHS.wealthSnapshots]: d.snapshots,
+    [PATHS.wealthFlows]: d.flows,
+  });
+  const current = { accounts: data.wealthAccounts, snapshots: data.wealthSnapshots, flows: data.wealthFlows };
+
+  /** Folds the duplicates of one account into the copy the sync keeps feeding. */
+  const merge = async (group: WealthAccount[]) => {
+    const keep = pickSurvivor(group, data.wealthSnapshots);
+    setBusy(true);
+    try {
+      const next = mergeAccounts(current, keep.id, group.filter((a) => a.id !== keep.id).map((a) => a.id));
+      await store.writeJSON(wealthFiles(next), `Merge duplicate ${keep.name}`);
+      await reload();
+      toast.success(`Merged into ${keep.name}`);
+    } catch (e) {
+      toast.error("Couldn't merge", { description: (e as Error).message });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const deleteAccount = async (account: WealthAccount) => {
+    try {
+      // Remember the id so a later Sync doesn't rebuild the account from the same emails.
+      const config = { ...data.config, deletedAccounts: [...new Set([...(data.config.deletedAccounts ?? []), account.id])] };
+      await store.writeJSON({ ...wealthFiles(removeAccount(current, account.id)), "config.json": config }, `Delete ${account.name}`);
+      await reload();
+      setEditing(null);
+      toast.success(`Deleted ${account.name}`);
+    } catch (e) {
+      toast.error("Couldn't delete", { description: (e as Error).message });
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -101,6 +115,18 @@ export default function NetWorth(props: ViewProps) {
         </Card>
       )}
 
+      {duplicates.map((group) => (
+        <div key={group.map((a) => a.id).join()} className="flex flex-wrap items-center gap-3 rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm">
+          <AlertTriangleIcon className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+          <p className="min-w-0 flex-1">
+            <b>{group.map((a) => a.name).join(" and ")}</b> look like the same account ({group[0].ref}). Net worth counts it {group.length} times.
+          </p>
+          <Button size="sm" variant="outline" disabled={busy} onClick={() => merge(group)}>
+            <MergeIcon /> Merge
+          </Button>
+        </div>
+      ))}
+
       <Lines title="Assets" lines={nw.assets} today={today} editable={accountById} onEdit={(a) => setEditing({ account: a, isNew: false })} />
       {nw.missingBalances.length > 0 && (
         <p className="px-1 text-xs text-muted-foreground">
@@ -116,6 +142,8 @@ export default function NetWorth(props: ViewProps) {
         <EditAccount
           account={editing.account}
           isNew={editing.isNew}
+          counts={{ balances: data.wealthSnapshots.filter((x) => x.account === editing.account.id).length, flows: data.wealthFlows.filter((x) => x.account === editing.account.id).length }}
+          onDelete={deleteAccount}
           onClose={() => setEditing(null)}
           onSave={async (account, value, date) => {
             try {
@@ -206,11 +234,15 @@ function Lines({ title, lines, today, editable, onEdit }: LinesProps) {
 function EditAccount({
   account,
   isNew,
+  counts,
+  onDelete,
   onClose,
   onSave,
 }: {
   account: WealthAccount;
   isNew: boolean;
+  counts: { balances: number; flows: number };
+  onDelete: (account: WealthAccount) => Promise<void>;
   onClose: () => void;
   onSave: (account: WealthAccount, value: number, date: string) => Promise<void>;
 }) {
@@ -274,11 +306,29 @@ function EditAccount({
               <Input id="date" type="date" value={date} max={new Date().toISOString().slice(0, 10)} onChange={(e) => setDate(e.target.value)} />
             </div>
           </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button disabled={busy || !(amount >= 0) || value === ""}>Save</Button>
+          <DialogFooter className="sm:justify-between">
+            {isNew ? (
+              <span />
+            ) : (
+              <ConfirmDialog
+                trigger={
+                  <Button type="button" variant="ghost" className="text-destructive hover:text-destructive">
+                    <Trash2Icon /> Delete
+                  </Button>
+                }
+                title={`Delete ${account.name}?`}
+                description={`Removes the account with its ${counts.balances} saved balance${counts.balances === 1 ? "" : "s"}${counts.flows ? ` and ${counts.flows} contribution${counts.flows === 1 ? "" : "s"}` : ""} from your net worth. Your data repo's git history keeps the old version if you ever need it back.`}
+                confirmLabel="Delete"
+                destructive
+                onConfirm={() => onDelete(account)}
+              />
+            )}
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" onClick={onClose}>
+                Cancel
+              </Button>
+              <Button disabled={busy || !(amount >= 0) || value === ""}>Save</Button>
+            </div>
           </DialogFooter>
         </form>
       </DialogContent>

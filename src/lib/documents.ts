@@ -5,6 +5,7 @@ import type { DocExtraction, DocInput } from "./ai/documents";
 import type { LeafData } from "./db";
 import { PATHS } from "./db";
 import { employerKey } from "./payroll";
+import { npsAccount } from "./nps";
 import { financialYear, matchAccount, newAccountId } from "./wealth";
 
 export class NeedsPasswordError extends Error {}
@@ -103,7 +104,12 @@ export function applyDocument(x: DocExtraction, data: LeafData, source: DocSourc
     let account = matchAccount(data.wealthAccounts, wealthKind, x.institution, x.reference);
     const accounts = [...data.wealthAccounts];
     if (!account) {
-      account = { id: newAccountId(wealthKind), kind: wealthKind, name: [x.institution, DEFAULT_NAME[wealthKind]].filter(Boolean).join(" "), institution: x.institution || undefined, ref };
+      // An NPS account gets the same id the Gmail sync derives from the PRAN, so the two can never create it twice.
+      const pran = (x.reference ?? "").replace(/\D/g, "").slice(-4);
+      account =
+        wealthKind === "nps" && pran.length >= 3
+          ? npsAccount(pran, 1)
+          : { id: newAccountId(wealthKind), kind: wealthKind, name: [x.institution, DEFAULT_NAME[wealthKind]].filter(Boolean).join(" "), institution: x.institution || undefined, ref };
       accounts.push(account);
     }
     const date = iso(x.asOfDate) ?? today;

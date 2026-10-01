@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { amcLabel, money } from "@/lib/format";
 import { ASSET_CLASSES, breakdown, type AssetClass, type SchemeSummary, type Slice } from "@/lib/portfolio";
+import SectionCard from "./SectionCard";
 
 // Colour follows the entity, never its rank: Equity is always slot 1, whatever its share.
 const CLASS_COLOR: Record<AssetClass, string> = {
@@ -33,29 +33,24 @@ export default function Allocation({ schemes }: { schemes: SchemeSummary[] }) {
   }, [schemes]);
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Allocation</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-8">
-        <section>
-          <h4 className="mb-3 text-sm font-medium text-muted-foreground">Asset class</h4>
-          <StackedBar slices={classes} />
-        </section>
-        <div className="grid gap-8 md:grid-cols-2">
-          {styles.length > 0 && (
-            <section>
-              <h4 className="mb-3 text-sm font-medium text-muted-foreground">Equity by style</h4>
-              <BarList slices={styles} />
-            </section>
-          )}
+    <SectionCard title="Allocation" bodyClassName="space-y-8">
+      <section>
+        <h4 className="mb-3 text-sm font-medium text-muted-foreground">Asset class</h4>
+        <StackedBar slices={classes} />
+      </section>
+      <div className="grid gap-8 md:grid-cols-2">
+        {styles.length > 0 && (
           <section>
-            <h4 className="mb-3 text-sm font-medium text-muted-foreground">By fund house</h4>
-            <BarList slices={amcs} />
+            <h4 className="mb-3 text-sm font-medium text-muted-foreground">Equity by style</h4>
+            <BarList slices={styles} />
           </section>
-        </div>
-      </CardContent>
-    </Card>
+        )}
+        <section>
+          <h4 className="mb-3 text-sm font-medium text-muted-foreground">By fund house</h4>
+          <BarList slices={amcs} />
+        </section>
+      </div>
+    </SectionCard>
   );
 }
 

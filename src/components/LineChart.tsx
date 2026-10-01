@@ -83,9 +83,17 @@ export default function LineChart({ series, label }: { series: ChartSeries[]; la
         onPointerLeave={() => setHover(null)}
       >
         <title id={id}>{label}</title>
+        <defs>
+          {series.map((s) => (
+            <linearGradient key={s.key} id={`${id}-${s.key}`} x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0%" stopColor={s.color} stopOpacity="0.22" />
+              <stop offset="100%" stopColor={s.color} stopOpacity="0" />
+            </linearGradient>
+          ))}
+        </defs>
         {ticks.map((v) => (
           <g key={v}>
-            <line x1={M.l} x2={W - M.r} y1={y(v)} y2={y(v)} className="stroke-border" strokeDasharray={v === lo ? undefined : "3 4"} />
+            <line x1={M.l} x2={W - M.r} y1={y(v)} y2={y(v)} className="stroke-border/60" strokeDasharray={v === lo ? undefined : "2 5"} />
             <text x={M.l - 8} y={y(v) + 4} textAnchor="end" className="fill-muted-foreground text-[11px]">
               {compactINR(v)}
             </text>
@@ -93,23 +101,33 @@ export default function LineChart({ series, label }: { series: ChartSeries[]; la
         ))}
         <text x={M.l} y={H - 4} className="fill-muted-foreground text-[11px]">{day(dates[0])}</text>
         <text x={W - M.r} y={H - 4} textAnchor="end" className="fill-muted-foreground text-[11px]">{day(dates.at(-1)!)}</text>
+        {series.map((s) =>
+          s.dashed ? null : (
+            <path
+              key={`${s.key}-area`}
+              d={`${s.points.map((p, i) => `${i ? "L" : "M"}${x(p.date).toFixed(1)},${y(p.v).toFixed(1)}`).join("")}L${x(s.points.at(-1)!.date).toFixed(1)},${y(lo).toFixed(1)}L${x(s.points[0].date).toFixed(1)},${y(lo).toFixed(1)}Z`}
+              fill={`url(#${id}-${s.key})`}
+            />
+          ),
+        )}
         {series.map((s) => (
           <path
             key={s.key}
             d={s.points.map((p, i) => `${i ? "L" : "M"}${x(p.date).toFixed(1)},${y(p.v).toFixed(1)}`).join("")}
             fill="none"
             stroke={s.color}
-            strokeWidth="2"
+            strokeWidth="1.75"
+            strokeLinecap="round"
             strokeLinejoin="round"
             strokeDasharray={s.dashed ? "5 4" : undefined}
           />
         ))}
         {at && (
           <>
-            <line x1={x(at)} x2={x(at)} y1={M.t} y2={H - M.b} className="stroke-muted-foreground" strokeDasharray="2 3" />
+            <line x1={x(at)} x2={x(at)} y1={M.t} y2={H - M.b} className="stroke-muted-foreground/50" />
             {series.map((s) => {
               const p = s.points.find((q) => q.date === at);
-              return p ? <circle key={s.key} cx={x(at)} cy={y(p.v)} r="3.5" fill={s.color} /> : null;
+              return p ? <circle key={s.key} cx={x(at)} cy={y(p.v)} r="4" fill={s.color} className="stroke-card" strokeWidth="2" /> : null;
             })}
           </>
         )}

@@ -2,7 +2,6 @@ import { useMemo, useState } from "react";
 import { PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -14,6 +13,7 @@ import { projectGoal } from "@/lib/goals";
 import type { SchemeSummary } from "@/lib/portfolio";
 import { sips } from "@/lib/sips";
 import { cn } from "@/lib/utils";
+import SectionCard from "./SectionCard";
 
 const today = () => new Date().toISOString().slice(0, 10);
 const blank = (): Goal => ({ id: crypto.randomUUID(), name: "", target: 0, date: "", schemes: [], returnPct: 10 });
@@ -40,18 +40,18 @@ export default function Goals({ store, data, setData, schemes }: Pick<ViewProps,
   };
 
   return (
-    <Card>
-      <CardHeader className="flex-row items-center justify-between gap-2">
-        <div className="space-y-1.5">
-          <CardTitle>Goals</CardTitle>
-          <CardDescription>Earmark funds for a goal and see whether your SIPs get you there.</CardDescription>
-        </div>
+    <>
+    <SectionCard
+      title="Goals"
+      description="Earmark funds for a goal and see whether your SIPs get you there."
+      action={
         <Button variant="outline" onClick={() => setEditing(blank())} disabled={!schemes.length}>
           <PlusIcon />
           Add goal
         </Button>
-      </CardHeader>
-      <CardContent className="space-y-3">
+      }
+    >
+      <div className="space-y-3">
         {goals.length === 0 && <p className="text-sm text-muted-foreground">No goals yet. Add one, such as a house down payment, and link the schemes that fund it.</p>}
         {goals.map((g) => {
           const p = projectGoal(g, schemes, plans, today());
@@ -98,7 +98,8 @@ export default function Goals({ store, data, setData, schemes }: Pick<ViewProps,
           );
         })}
         <p className="text-xs text-muted-foreground">Projections assume a steady return and don't account for tax, inflation or market swings.</p>
-      </CardContent>
+      </div>
+    </SectionCard>
 
       <GoalDialog
         goal={editing}
@@ -110,7 +111,7 @@ export default function Goals({ store, data, setData, schemes }: Pick<ViewProps,
           if (await save(exists ? goals.map((x) => (x.id === g.id ? g : x)) : [...goals, g], `${exists ? "Update" : "Add"} goal ${g.name}`)) setEditing(null);
         }}
       />
-    </Card>
+    </>
   );
 }
 

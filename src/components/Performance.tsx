@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { DownloadCloudIcon, InfoIcon, Loader2Icon } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { ViewProps } from "@/App";
 import { groupSchemes, type SchemeGroup } from "@/lib/capitalGains";
@@ -21,6 +20,7 @@ import { compareBenchmark, valueHistory } from "@/lib/performance";
 import { assetClassOf, latestStatements, schemeKey } from "@/lib/portfolio";
 import { cn } from "@/lib/utils";
 import LineChart from "./LineChart";
+import SectionCard from "./SectionCard";
 
 const DAY = 86_400_000;
 
@@ -126,18 +126,17 @@ export default function Performance({ store, data, setData }: Pick<ViewProps, "s
 
   return (
     <div className="space-y-4">
-      <Card>
-        <CardHeader className="flex-row flex-wrap items-center justify-between gap-2">
-          <div className="space-y-1.5">
-            <CardTitle>Value over time</CardTitle>
-            <CardDescription>Units held at each month-end × that day's NAV, against the money you put in.</CardDescription>
-          </div>
+      <SectionCard
+        title="Value over time"
+        description="Units held at each month-end × that day's NAV, against the money you put in."
+        action={
           <Button variant={upToDate ? "outline" : "default"} onClick={refresh} disabled={!cache || !!busy || !groups.length}>
             {busy ? <Loader2Icon className="animate-spin" /> : <DownloadCloudIcon />}
             {upToDate ? "Refresh NAVs" : hasAny ? "Fetch missing NAVs" : "Load NAV history"}
           </Button>
-        </CardHeader>
-        <CardContent className="space-y-3">
+        }
+      >
+        <div className="space-y-3">
           {busy && <p className="text-sm text-muted-foreground">{busy}</p>}
           {history && history.points.length > 1 ? (
             <LineChart
@@ -165,15 +164,13 @@ export default function Performance({ store, data, setData }: Pick<ViewProps, "s
               Net invested only counts transactions your statements show. Units bought before then are valued but have no cost in the dashed line.
             </p>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </SectionCard>
 
-      <Card>
-        <CardHeader className="flex-row flex-wrap items-center justify-between gap-2">
-          <div className="space-y-1.5">
-            <CardTitle>Versus the index</CardTitle>
-            <CardDescription>Your actual purchases and redemptions, replayed into an index fund instead.</CardDescription>
-          </div>
+      <SectionCard
+        title="Versus the index"
+        description="Your actual purchases and redemptions, replayed into an index fund instead."
+        action={
           <div className="flex items-center gap-2">
             <Select value={equityOnly ? "equity" : "all"} onValueChange={(v) => setEquityOnly(v === "equity")}>
               <SelectTrigger className="w-36">
@@ -197,8 +194,9 @@ export default function Performance({ store, data, setData }: Pick<ViewProps, "s
               </SelectContent>
             </Select>
           </div>
-        </CardHeader>
-        <CardContent className="space-y-3">
+        }
+      >
+        <div className="space-y-3">
           {compared ? (
             <>
               <div className="grid gap-3 sm:grid-cols-3">
@@ -235,8 +233,8 @@ export default function Performance({ store, data, setData }: Pick<ViewProps, "s
           ) : (
             <p className="text-sm text-muted-foreground">{bench ? "No fund with full history to compare yet." : "Load NAV history above to fetch the benchmark."}</p>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </SectionCard>
     </div>
   );
 }

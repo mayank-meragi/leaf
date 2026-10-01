@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CheckIcon, CopyIcon, InfoIcon, Loader2Icon, RefreshCwIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { ViewProps } from "@/App";
 import { day, money } from "@/lib/format";
@@ -11,6 +11,7 @@ import { costs, holdingsPath, loadHoldings, lookThrough, monthsOld, overlaps, ty
 import { CODES_PATH, type CodeMap } from "@/lib/nav";
 import { schemeKey, type SchemeSummary } from "@/lib/portfolio";
 import { cn } from "@/lib/utils";
+import SectionCard from "./SectionCard";
 
 const STALE_MONTHS = 2;
 
@@ -62,7 +63,7 @@ export default function LookThrough({ store, schemes }: Pick<ViewProps, "store">
   if (!state.funds.length)
     return (
       <div className="space-y-4">
-        <Card className="px-6 py-8 text-center text-sm text-muted-foreground">
+        <Card className="px-4 py-8 text-center text-sm text-muted-foreground">
           <p>No fund holdings saved yet. Sync them to see overlap, what you really own and what your funds cost.</p>
         </Card>
         {sync}
@@ -180,98 +181,86 @@ function Ready({ funds, total, missing }: { funds: FundInput[]; total: number; m
         </div>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>What you really own</CardTitle>
-          <CardDescription>Each fund's stocks, scaled by how much you hold in it and added up across funds.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-3">
-            <Tile label="Top 10 stocks" value={`${(look.top10Share * 100).toFixed(1)}%`} sub="of your whole portfolio" />
-            <Tile label="In listed stocks" value={money(look.equityAmount)} sub={`${look.stocks.length} different stocks`} />
-            <Tile label="Funds covered" value={`${(look.coverage * 100).toFixed(0)}%`} sub="of portfolio value" />
-          </div>
+      <SectionCard title="What you really own" description="Each fund's stocks, scaled by how much you hold in it and added up across funds." bodyClassName="space-y-4">
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Tile label="Top 10 stocks" value={`${(look.top10Share * 100).toFixed(1)}%`} sub="of your whole portfolio" />
+          <Tile label="In listed stocks" value={money(look.equityAmount)} sub={`${look.stocks.length} different stocks`} />
+          <Tile label="Funds covered" value={`${(look.coverage * 100).toFixed(0)}%`} sub="of portfolio value" />
+        </div>
 
-          <div className="grid gap-6 lg:grid-cols-[3fr_2fr]">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Stock</TableHead>
-                  <TableHead className="text-right">Exposure</TableHead>
-                  <TableHead className="text-right">Of portfolio</TableHead>
-                  <TableHead className="text-right">Funds</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {look.stocks.slice(0, 15).map((s) => (
-                  <TableRow key={s.id}>
-                    <TableCell className="whitespace-normal">
-                      <div>{s.name}</div>
-                      {s.sector && <div className="text-xs text-muted-foreground">{s.sector}</div>}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">{money(s.amount)}</TableCell>
-                    <TableCell className="text-right tabular-nums">{(s.share * 100).toFixed(2)}%</TableCell>
-                    <TableCell className="text-right tabular-nums" title={s.funds.map((f) => `${f.name}: ${money(f.amount)}`).join("\n")}>
-                      {s.funds.length}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-
-            <div className="space-y-2">
-              <h3 className="text-sm font-medium">Sectors</h3>
-              {look.sectors.slice(0, 10).map((s) => (
-                <div key={s.sector} className="space-y-0.5">
-                  <div className="flex justify-between text-sm">
-                    <span>{s.sector}</span>
-                    <span className="tabular-nums text-muted-foreground">{(s.share * 100).toFixed(1)}%</span>
-                  </div>
-                  <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-                    <div className="h-full rounded-full" style={{ width: `${Math.min(100, (s.amount / (look.sectors[0].amount || 1)) * 100)}%`, background: "var(--chart-1)" }} />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Overlap pairs={pairs} />
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Fund costs</CardTitle>
-          <CardDescription>Expense ratios are deducted from the NAV every day, so you never see a bill.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-3">
-            <Tile label="Weighted expense ratio" value={cost.weighted == null ? "—" : `${cost.weighted.toFixed(2)}%`} sub="a year, by value" />
-            <Tile label="Cost a year" value={money(cost.annual)} sub="on funds with a known ratio" />
-            <Tile label="Covered" value={`${(cost.coverage * 100).toFixed(0)}%`} sub="of portfolio value" />
-          </div>
+        <div className="grid gap-6 lg:grid-cols-[3fr_2fr]">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Scheme</TableHead>
-                <TableHead className="text-right">Value</TableHead>
-                <TableHead className="text-right">Expense ratio</TableHead>
-                <TableHead className="text-right">A year</TableHead>
+                <TableHead>Stock</TableHead>
+                <TableHead className="text-right">Exposure</TableHead>
+                <TableHead className="text-right">Of portfolio</TableHead>
+                <TableHead className="text-right">Funds</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {cost.rows.map((r) => (
-                <TableRow key={r.name}>
-                  <TableCell className="whitespace-normal">{r.name}</TableCell>
-                  <TableCell className="text-right tabular-nums">{money(r.value)}</TableCell>
-                  <TableCell className="text-right tabular-nums">{r.ratio == null ? <span className="text-muted-foreground" title="Regular plans' own ratios aren't published by the source">n/a</span> : `${r.ratio.toFixed(2)}%`}</TableCell>
-                  <TableCell className="text-right tabular-nums">{r.annual == null ? "—" : money(r.annual)}</TableCell>
+              {look.stocks.slice(0, 15).map((s) => (
+                <TableRow key={s.id}>
+                  <TableCell className="whitespace-normal">
+                    <div>{s.name}</div>
+                    {s.sector && <div className="text-xs text-muted-foreground">{s.sector}</div>}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">{money(s.amount)}</TableCell>
+                  <TableCell className="text-right tabular-nums">{(s.share * 100).toFixed(2)}%</TableCell>
+                  <TableCell className="text-right tabular-nums" title={s.funds.map((f) => `${f.name}: ${money(f.amount)}`).join("\n")}>
+                    {s.funds.length}
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
-        </CardContent>
-      </Card>
+
+          <div className="space-y-2">
+            <h3 className="text-sm font-medium">Sectors</h3>
+            {look.sectors.slice(0, 10).map((s) => (
+              <div key={s.sector} className="space-y-0.5">
+                <div className="flex justify-between text-sm">
+                  <span>{s.sector}</span>
+                  <span className="tabular-nums text-muted-foreground">{(s.share * 100).toFixed(1)}%</span>
+                </div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                  <div className="h-full rounded-full" style={{ width: `${Math.min(100, (s.amount / (look.sectors[0].amount || 1)) * 100)}%`, background: "var(--chart-1)" }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </SectionCard>
+
+      <Overlap pairs={pairs} />
+
+      <SectionCard title="Fund costs" description="Expense ratios are deducted from the NAV every day, so you never see a bill." bodyClassName="space-y-4">
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Tile label="Weighted expense ratio" value={cost.weighted == null ? "—" : `${cost.weighted.toFixed(2)}%`} sub="a year, by value" />
+          <Tile label="Cost a year" value={money(cost.annual)} sub="on funds with a known ratio" />
+          <Tile label="Covered" value={`${(cost.coverage * 100).toFixed(0)}%`} sub="of portfolio value" />
+        </div>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Scheme</TableHead>
+              <TableHead className="text-right">Value</TableHead>
+              <TableHead className="text-right">Expense ratio</TableHead>
+              <TableHead className="text-right">A year</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {cost.rows.map((r) => (
+              <TableRow key={r.name}>
+                <TableCell className="whitespace-normal">{r.name}</TableCell>
+                <TableCell className="text-right tabular-nums">{money(r.value)}</TableCell>
+                <TableCell className="text-right tabular-nums">{r.ratio == null ? <span className="text-muted-foreground" title="Regular plans' own ratios aren't published by the source">n/a</span> : `${r.ratio.toFixed(2)}%`}</TableCell>
+                <TableCell className="text-right tabular-nums">{r.annual == null ? "—" : money(r.annual)}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </SectionCard>
 
       <p className="text-xs text-muted-foreground">
         Holdings are each fund's monthly disclosure{oldest ? `, latest as of ${day(dates.at(-1)!)}` : ""}, fetched by the local helper. They can lag what a fund holds today.
@@ -287,61 +276,55 @@ function Overlap({ pairs }: { pairs: PairOverlap[] }) {
   const level = (o: number) => (o >= 50 ? "text-destructive" : o >= 30 ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground");
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Fund overlap</CardTitle>
-        <CardDescription>How much of one fund is the same stocks as another. High overlap means you're paying two fees for one portfolio.</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-2">
-        {pairs.length === 0 && <p className="text-sm text-muted-foreground">No two of your equity funds share a stock, or you hold only one.</p>}
-        {shown.map((p) => {
-          const key = `${p.a}|${p.b}`;
-          return (
-            <div key={key} className="rounded-lg border">
-              <button className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm" onClick={() => setOpen(open === key ? null : key)} aria-expanded={open === key}>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate">{p.a}</span>
-                  <span className="block truncate text-muted-foreground">{p.b}</span>
+    <SectionCard title="Fund overlap" description="How much of one fund is the same stocks as another. High overlap means you're paying two fees for one portfolio." bodyClassName="space-y-2">
+      {pairs.length === 0 && <p className="text-sm text-muted-foreground">No two of your equity funds share a stock, or you hold only one.</p>}
+      {shown.map((p) => {
+        const key = `${p.a}|${p.b}`;
+        return (
+          <div key={key} className="rounded-lg border">
+            <button className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm" onClick={() => setOpen(open === key ? null : key)} aria-expanded={open === key}>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate">{p.a}</span>
+                <span className="block truncate text-muted-foreground">{p.b}</span>
+              </span>
+              <span className="w-28 shrink-0">
+                <span className={cn("block text-right font-medium tabular-nums", level(p.overlap))}>{p.overlap.toFixed(0)}%</span>
+                <span className="mt-1 block h-1.5 overflow-hidden rounded-full bg-muted">
+                  <span className="block h-full rounded-full" style={{ width: `${Math.min(100, p.overlap)}%`, background: p.overlap >= 50 ? "var(--destructive)" : "var(--chart-1)" }} />
                 </span>
-                <span className="w-28 shrink-0">
-                  <span className={cn("block text-right font-medium tabular-nums", level(p.overlap))}>{p.overlap.toFixed(0)}%</span>
-                  <span className="mt-1 block h-1.5 overflow-hidden rounded-full bg-muted">
-                    <span className="block h-full rounded-full" style={{ width: `${Math.min(100, p.overlap)}%`, background: p.overlap >= 50 ? "var(--destructive)" : "var(--chart-1)" }} />
-                  </span>
-                </span>
-              </button>
-              {open === key && (
-                <div className="border-t px-4 py-2">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>{p.shared.length} shared stocks</TableHead>
-                        <TableHead className="text-right">In first</TableHead>
-                        <TableHead className="text-right">In second</TableHead>
+              </span>
+            </button>
+            {open === key && (
+              <div className="border-t px-4 py-2">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>{p.shared.length} shared stocks</TableHead>
+                      <TableHead className="text-right">In first</TableHead>
+                      <TableHead className="text-right">In second</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {p.shared.slice(0, 10).map((s) => (
+                      <TableRow key={s.id}>
+                        <TableCell>{s.name}</TableCell>
+                        <TableCell className="text-right tabular-nums">{s.a.toFixed(2)}%</TableCell>
+                        <TableCell className="text-right tabular-nums">{s.b.toFixed(2)}%</TableCell>
                       </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {p.shared.slice(0, 10).map((s) => (
-                        <TableRow key={s.id}>
-                          <TableCell>{s.name}</TableCell>
-                          <TableCell className="text-right tabular-nums">{s.a.toFixed(2)}%</TableCell>
-                          <TableCell className="text-right tabular-nums">{s.b.toFixed(2)}%</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              )}
-            </div>
-          );
-        })}
-        {pairs.length > 8 && (
-          <button className="text-sm text-muted-foreground underline underline-offset-4" onClick={() => setAll((v) => !v)}>
-            {all ? "Show fewer" : `Show all ${pairs.length} pairs`}
-          </button>
-        )}
-      </CardContent>
-    </Card>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </div>
+        );
+      })}
+      {pairs.length > 8 && (
+        <button className="text-sm text-muted-foreground underline underline-offset-4" onClick={() => setAll((v) => !v)}>
+          {all ? "Show fewer" : `Show all ${pairs.length} pairs`}
+        </button>
+      )}
+    </SectionCard>
   );
 }
 
@@ -357,7 +340,7 @@ function Tile({ label, value, sub }: { label: string; value: string; sub?: strin
 
 function Empty({ children }: { children: React.ReactNode }) {
   return (
-    <Card className="px-6 py-10 text-center text-sm text-muted-foreground">
+    <Card className="px-4 py-10 text-center text-sm text-muted-foreground">
       <p>{children}</p>
     </Card>
   );

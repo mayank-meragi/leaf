@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useImperativeHandle, useRef, useState, type Ref } from "react";
 import { FileUpIcon, Loader2Icon } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -31,12 +31,17 @@ const KIND_LABEL: Record<string, string> = {
 };
 
 /** "Import document" button + the unlock → read → confirm flow. */
-export default function ImportDocument({ store, data, reload, label = "Import document" }: ViewProps & { label?: string }) {
+export interface Opener {
+  open: () => void;
+}
+
+export default function ImportDocument({ store, data, reload, label, ref }: ViewProps & { label?: string; ref?: Ref<Opener> }) {
   const [step, setStep] = useState<Step>({ kind: "idle" });
   const [password, setPassword] = useState("");
   const [remember, setRemember] = useState(true);
   const [saving, setSaving] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  useImperativeHandle(ref, () => ({ open: () => fileRef.current?.click() }));
 
   const read = async (file: File, typed?: string) => {
     setStep({ kind: "reading", file });
@@ -95,10 +100,12 @@ export default function ImportDocument({ store, data, reload, label = "Import do
           e.target.value = "";
         }}
       />
-      <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={step.kind === "reading"}>
-        {step.kind === "reading" ? <Loader2Icon className="animate-spin" /> : <FileUpIcon />}
-        {step.kind === "reading" ? "Reading…" : label}
-      </Button>
+      {label && (
+        <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={step.kind === "reading"}>
+          {step.kind === "reading" ? <Loader2Icon className="animate-spin" /> : <FileUpIcon />}
+          {step.kind === "reading" ? "Reading…" : label}
+        </Button>
+      )}
 
       <Dialog open={step.kind === "password" || step.kind === "review"} onOpenChange={(o) => !o && close()}>
         <DialogContent>

@@ -1,32 +1,25 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { DownloadIcon, InfoIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { CASStatement } from "@/types";
-import { capitalGains, gainsCSV, gainYears, summarizeFY } from "@/lib/capitalGains";
+import { capitalGains, gainsCSV, summarizeFY } from "@/lib/capitalGains";
 import { day, money } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import SectionCard from "./SectionCard";
 
 const tone = (n: number) => (n > 0 ? "text-positive" : n < 0 ? "text-destructive" : undefined);
 
-export default function CapitalGains({ statements }: { statements: CASStatement[] }) {
+export default function CapitalGains({ statements, fy }: { statements: CASStatement[]; fy: string }) {
   const cg = useMemo(() => capitalGains(statements), [statements]);
-  const years = useMemo(() => gainYears(cg), [cg]);
-  const [picked, setPicked] = useState<string>();
-  const fy = picked && years.includes(picked) ? picked : years[0];
-  const s = useMemo(() => (fy ? summarizeFY(cg, fy) : undefined), [cg, fy]);
+  const s = useMemo(() => summarizeFY(cg, fy), [cg, fy]);
   const lots = useMemo(() => cg.lots.filter((l) => l.fy === fy), [cg, fy]);
 
-  if (!fy || !s) {
+  if (!lots.length && !s.unmatched) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Capital gains</CardTitle>
-          <CardDescription>No redemptions or switch-outs in your statements yet.</CardDescription>
-        </CardHeader>
-      </Card>
+      <SectionCard title="Capital gains" description={`No redemptions or switch-outs in FY ${fy}.`}>
+        <p className="text-sm text-muted-foreground">Gains show up here once your statements include a sale in this financial year.</p>
+      </SectionCard>
     );
   }
 
@@ -40,32 +33,18 @@ export default function CapitalGains({ statements }: { statements: CASStatement[
   const exempt = Math.min(s.exemption, Math.max(0, s.equityLong));
 
   return (
-    <Card>
-      <CardHeader className="flex-row flex-wrap items-center justify-between gap-2">
-        <div className="space-y-1.5">
-          <CardTitle>Capital gains</CardTitle>
-          <CardDescription>Realised gains from redemptions and switches, matched first-in-first-out.</CardDescription>
-        </div>
-        <div className="flex items-center gap-2">
-          <Select value={fy} onValueChange={setPicked}>
-            <SelectTrigger className="w-36">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {years.map((y) => (
-                <SelectItem key={y} value={y}>
-                  FY {y}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button variant="outline" onClick={download} disabled={!lots.length}>
-            <DownloadIcon />
-            CSV
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
+    <SectionCard
+      title="Capital gains"
+      subtitle={`FY ${fy}`}
+      description="Realised gains from redemptions and switches, matched first-in-first-out."
+      action={
+        <Button variant="outline" size="sm" onClick={download}>
+          <DownloadIcon />
+          CSV
+        </Button>
+      }
+    >
+      <div className="space-y-4">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Tile label="Equity short term" value={s.equityShort} sub="Sold within 12 months" />
           <Tile
@@ -135,8 +114,8 @@ export default function CapitalGains({ statements }: { statements: CASStatement[
           short term at slab rate, and equity rates change on 23 Jul 2024 (15%/10% before, 20%/12.5% after). Check against your AMC's capital
           gains statement before filing.
         </p>
-      </CardContent>
-    </Card>
+      </div>
+    </SectionCard>
   );
 }
 

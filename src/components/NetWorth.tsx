@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { AlertTriangleIcon, MergeIcon, PencilIcon, PlusIcon, ShieldIcon, Trash2Icon } from "lucide-react";
+import { AlertTriangleIcon, ArrowRightIcon, MergeIcon, PencilIcon, PlusIcon, ShieldIcon, Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,10 +18,9 @@ import { cn } from "@/lib/utils";
 import { duplicateGroups, mergeAccounts, newAccountId, pickSurvivor, removeAccount, WEALTH_KINDS, type NetWorthLine } from "@/lib/wealth";
 import type { WealthAccount, WealthKind } from "@/types";
 import ConfirmDialog from "./ConfirmDialog";
-import ImportDocument from "./ImportDocument";
-import WhereToGet from "./WhereToGet";
+import SectionCard from "./SectionCard";
 
-export default function NetWorth(props: ViewProps) {
+export default function NetWorth({ onOpenFunds, ...props }: ViewProps & { onOpenFunds: () => void }) {
   const { store, data, reload } = props;
   const today = new Date().toISOString().slice(0, 10);
   const [editing, setEditing] = useState<{ account: WealthAccount; isNew: boolean } | null>(null);
@@ -77,25 +76,26 @@ export default function NetWorth(props: ViewProps) {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        <Button variant="outline" onClick={() => setEditing({ account: { id: newAccountId("epf"), kind: "epf", name: "" }, isNew: true })}>
-          <PlusIcon /> Add account
-        </Button>
-        <ImportDocument {...props} />
-      </div>
+        <div className="grid gap-4 sm:grid-cols-3">
+          <Stat label="Net worth" value={money(nw.total)} strong />
+          <Stat label="Assets" value={money(assetsTotal)} />
+          <Stat label="Liabilities" value={money(liabTotal)} />
+        </div>
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        <Stat label="Net worth" value={money(nw.total)} strong />
-        <Stat label="Assets" value={money(assetsTotal)} />
-        <Stat label="Liabilities" value={money(liabTotal)} />
-      </div>
+        {duplicates.map((group) => (
+          <div key={group.map((a) => a.id).join()} className="flex flex-wrap items-center gap-3 rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm">
+            <AlertTriangleIcon className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+            <p className="min-w-0 flex-1">
+              <b>{group.map((a) => a.name).join(" and ")}</b> look like the same account ({group[0].ref}). Net worth counts it {group.length} times.
+            </p>
+            <Button size="sm" variant="outline" disabled={busy} onClick={() => merge(group)}>
+              <MergeIcon /> Merge
+            </Button>
+          </div>
+        ))}
 
-      {groups.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>What you own</CardTitle>
-          </CardHeader>
-          <CardContent>
+        {groups.length > 0 && (
+          <SectionCard title="What you own">
             <ul className="space-y-2.5">
               {groups.map(([g, v]) => (
                 <li key={g}>
@@ -111,32 +111,24 @@ export default function NetWorth(props: ViewProps) {
                 </li>
               ))}
             </ul>
-          </CardContent>
-        </Card>
-      )}
+          </SectionCard>
+        )}
 
-      {duplicates.map((group) => (
-        <div key={group.map((a) => a.id).join()} className="flex flex-wrap items-center gap-3 rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm">
-          <AlertTriangleIcon className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
-          <p className="min-w-0 flex-1">
-            <b>{group.map((a) => a.name).join(" and ")}</b> look like the same account ({group[0].ref}). Net worth counts it {group.length} times.
-          </p>
-          <Button size="sm" variant="outline" disabled={busy} onClick={() => merge(group)}>
-            <MergeIcon /> Merge
-          </Button>
-        </div>
-      ))}
+      <div className="flex justify-end">
+        <Button variant="outline" onClick={() => setEditing({ account: { id: newAccountId("epf"), kind: "epf", name: "" }, isNew: true })}>
+          <PlusIcon /> Add account
+        </Button>
+      </div>
 
-      <Lines title="Assets" lines={nw.assets} today={today} editable={accountById} onEdit={(a) => setEditing({ account: a, isNew: false })} />
+      <Lines title="Assets" lines={nw.assets} today={today} editable={accountById} onEdit={(a) => setEditing({ account: a, isNew: false })} onOpenFunds={onOpenFunds} />
       {nw.missingBalances.length > 0 && (
         <p className="px-1 text-xs text-muted-foreground">
           No balance in alerts yet for {nw.missingBalances.join(", ")}. They'll appear once an alert includes one (after the next Sync).
         </p>
       )}
-      <Lines title="Liabilities" lines={nw.liabilities} today={today} editable={accountById} onEdit={(a) => setEditing({ account: a, isNew: false })} />
+      <Lines title="Liabilities" lines={nw.liabilities} today={today} editable={accountById} onEdit={(a) => setEditing({ account: a, isNew: false })} onOpenFunds={onOpenFunds} />
 
       <Protection policies={data.policies} today={today} />
-      <WhereToGet />
 
       {editing && (
         <EditAccount
@@ -166,7 +158,7 @@ export default function NetWorth(props: ViewProps) {
 
 function Stat({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
   return (
-    <Card className="gap-1 px-6">
+    <Card className="gap-1 px-4">
       <div className="text-xs text-muted-foreground">{label}</div>
       <div className={cn("font-semibold tabular-nums tracking-tight", strong ? "text-3xl" : "text-2xl")}>{value}</div>
     </Card>
@@ -180,9 +172,11 @@ interface LinesProps {
   /** Tracked accounts, which can be updated by hand (MF, bank and card lines come from sync). */
   editable: Map<string, WealthAccount>;
   onEdit: (account: WealthAccount) => void;
+  /** The mutual funds line has its own page. */
+  onOpenFunds: () => void;
 }
 
-function Lines({ title, lines, today, editable, onEdit }: LinesProps) {
+function Lines({ title, lines, today, editable, onEdit, onOpenFunds }: LinesProps) {
   if (!lines.length) return null;
   return (
     <Card className="py-0">
@@ -190,7 +184,7 @@ function Lines({ title, lines, today, editable, onEdit }: LinesProps) {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="pl-6">{title}</TableHead>
+              <TableHead className="pl-4">{title}</TableHead>
               <TableHead>As of</TableHead>
               <TableHead className="text-right">Value</TableHead>
               <TableHead className="w-12 pr-4" />
@@ -201,7 +195,7 @@ function Lines({ title, lines, today, editable, onEdit }: LinesProps) {
               const account = editable.get(l.key);
               return (
                 <TableRow key={l.key}>
-                  <TableCell className="pl-6 whitespace-normal">
+                  <TableCell className="pl-4 whitespace-normal">
                     <div className="font-medium">{l.label}</div>
                     <div className="text-xs text-muted-foreground">{[l.group, l.note].filter(Boolean).join(" · ")}</div>
                   </TableCell>
@@ -218,6 +212,11 @@ function Lines({ title, lines, today, editable, onEdit }: LinesProps) {
                     {account && (
                       <Button variant="ghost" size="icon" className="size-8" aria-label={`Update ${l.label}`} onClick={() => onEdit(account)}>
                         <PencilIcon className="size-3.5" />
+                      </Button>
+                    )}
+                    {l.key === "mf" && (
+                      <Button variant="ghost" size="icon" className="size-8" aria-label="Open mutual funds" onClick={onOpenFunds}>
+                        <ArrowRightIcon className="size-3.5" />
                       </Button>
                     )}
                   </TableCell>

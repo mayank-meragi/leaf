@@ -61,7 +61,7 @@ export function classify(description: string, units: number | null, amount: numb
     if (/reinvest/.test(d)) return "DIVIDEND_REINVEST";
     if (units == null || units === 0) return "DIVIDEND_PAYOUT";
   }
-  if (/insufficient balance|rejected|reversal|reversed|bounced/.test(d) && ((units ?? 0) < 0 || (amount ?? 0) < 0)) return "REVERSAL";
+  if (/insufficient balance|reject(ed|ion)|reversal|reversed|bounced/.test(d) && ((units ?? 0) < 0 || (amount ?? 0) < 0)) return "REVERSAL";
   if (/switch/.test(d)) return (units ?? amount ?? 0) < 0 ? "SWITCH_OUT" : "SWITCH_IN";
   if ((units ?? 0) < 0 || /redemption|redeem/.test(d)) return "REDEMPTION";
   if (/systematic|\bi?sip\b|\bsys\.? ?invest/.test(d)) return "PURCHASE_SIP";

@@ -97,10 +97,14 @@ export function navOn(series: NavSeries, date: string): number | undefined {
 // ---- Matching a statement's scheme to an AMFI code ----
 
 const STOP = new Set(["plan", "option", "scheme", "the", "of", "and", "fund", "mutual"]);
+/** "Mid Cap" and "Midcap" are the same word to AMFI and different words to a search box. */
+const COMPOUND = /\b(mid|small|large|multi|flexi)[\s-]+cap\b/g;
+
 const tokens = (name: string) =>
   name
     .toLowerCase()
     .replace(/\(formerly[^)]*\)/g, " ")
+    .replace(COMPOUND, "$1cap")
     .replace(/&/g, " and ")
     .replace(/[^a-z0-9]+/g, " ")
     .trim()
@@ -110,12 +114,13 @@ const tokens = (name: string) =>
 const wantsDirect = (name: string, advisor?: string) => (/direct/i.test(name) || /direct/i.test(advisor ?? "") ? true : /regular/i.test(name) || /ARN/i.test(advisor ?? "") ? false : undefined);
 const isGrowth = (name: string) => !/idcw|dividend|payout|bonus|reinvest/i.test(name);
 
-/** Queries to try, most specific first: the full name, then progressively fewer leading words. */
+/** Queries to try, most specific first: the full name, then progressively fewer leading words, each also with compound words split. */
 export function queryVariants(name: string): string[] {
-  const words = tokens(name).filter((w) => !["direct", "regular", "growth", "plan", "option", "idcw"].includes(w));
+  const words = tokens(name).filter((w) => !["direct", "regular", "growth", "plan", "option", "idcw", "directonline"].includes(w));
   const out: string[] = [];
   for (let n = words.length; n >= Math.min(3, words.length) && out.length < 4; n--) out.push(words.slice(0, n).join(" "));
-  return [...new Set(out)];
+  const split = (q: string) => q.replace(/\b(mid|small|large|multi|flexi)cap\b/g, "$1 cap");
+  return [...new Set(out.flatMap((q) => [q, split(q)]))];
 }
 
 /** Share of the scheme's words the candidate also has. */
@@ -140,27 +145,36 @@ const MAX_CANDIDATES = 5;
 export async function resolveScheme(q: SchemeQuery, api: NavApi = mfapi): Promise<{ series: NavSeries; verified: boolean } | null> {
   const direct = wantsDirect(q.name, q.advisor);
   const growth = isGrowth(q.name);
+  // AMFI names are inconsistent (a Direct plan can be listed as just "HSBC Small Cap Fund"), so a name only rules a
+  // candidate out when it says the opposite. The NAV check below does the real work.
+  const planOk = (n: string) => direct === undefined || (!/direct|regular/i.test(n) ? true : /direct/i.test(n) === direct);
+
   const seen = new Map<number, string>();
+  const checked = new Set<number>();
+  let best: { series: NavSeries; hits: number; score: number } | null = null;
+
+  // Search wording matters ("Mid Cap" vs "Midcap"), so keep trying variants until one yields a confirmed match,
+  // rather than stopping at the first that returns something.
   for (const query of queryVariants(q.name)) {
     for (const c of await api.search(query)) seen.set(c.schemeCode, c.schemeName);
-    if (seen.size >= 3) break;
-  }
-  const ranked = [...seen]
-    .filter(([, n]) => (direct === undefined || /direct/i.test(n) === direct) && isGrowth(n) === growth)
-    .map(([code, n]) => ({ code, score: similarity(q.name, n) }))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, MAX_CANDIDATES);
+    const ranked = [...seen]
+      .filter(([code, n]) => !checked.has(code) && planOk(n) && isGrowth(n) === growth)
+      .map(([code, n]) => ({ code, score: similarity(q.name, n) }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, MAX_CANDIDATES);
 
-  let best: { series: NavSeries; hits: number; score: number } | null = null;
-  for (const c of ranked) {
-    const series = await api.series(c.code);
-    if (q.isin && series.isins.includes(q.isin)) return { series, verified: true };
-    const hits = q.anchors.filter((a) => {
-      const nav = navOn(series, a.date);
-      return nav != null && Math.abs(nav - a.nav) / a.nav < 0.001;
-    }).length;
-    if (!best || hits > best.hits || (hits === best.hits && c.score > best.score)) best = { series, hits, score: c.score };
-    if (hits >= 2) break;
+    for (const c of ranked) {
+      checked.add(c.code);
+      const series = await api.series(c.code);
+      if (q.isin && series.isins.includes(q.isin)) return { series, verified: true };
+      const hits = q.anchors.filter((a) => {
+        const nav = navOn(series, a.date);
+        return nav != null && Math.abs(nav - a.nav) / a.nav < 0.001;
+      }).length;
+      if (!best || hits > best.hits || (hits === best.hits && c.score > best.score)) best = { series, hits, score: c.score };
+      if (hits >= 2) return { series, verified: true };
+    }
+    if (best && best.hits > 0) break;
   }
   if (!best) return null;
   if (best.hits > 0) return { series: best.series, verified: true };

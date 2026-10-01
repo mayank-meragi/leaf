@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Goal, MFTransaction, MFTxnType } from "@/types";
 import type { SchemeGroup } from "./capitalGains";
 import { futureValue, monthsUntil, projectGoal, requiredMonthly } from "./goals";
+import { costs, lookThrough, monthsOld, overlaps, pairOverlap, type FundHoldings, type FundInput } from "./holdings";
 import { navOn, parseSeries, queryVariants, resolveScheme, type NavApi, type NavSeries } from "./nav";
 import { compareBenchmark, hasFullHistory, monthEnds, openingUnits, valueHistory } from "./performance";
 import { planMix, planTypeOf } from "./planType";
@@ -23,8 +24,41 @@ describe("nav", () => {
     expect(navOn(s, "2024-02-01")).toBe(11);
   });
   it("drops plan and option words and shortens progressively", () => {
-    expect(queryVariants("HDFC Mid-Cap Opportunities Fund - Direct Plan - Growth Option")[0]).toBe("hdfc mid cap opportunities fund");
+    const v = queryVariants("HDFC Mid-Cap Opportunities Fund - Direct Plan - Growth Option");
+    expect(v[0]).toBe("hdfc midcap opportunities fund");
+    expect(v).toContain("hdfc mid cap opportunities fund"); // AMFI sometimes spells it as two words
     expect(queryVariants("UTI Nifty 50 Index Fund - Direct Plan - Growth").at(-1)!.split(" ").length).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe("resolveScheme against AMFI's inconsistent names", () => {
+  // Real cases: the statement says "Mid Cap", AMFI says "Midcap"; AMFI lists a Direct plan as just "HSBC Small Cap Fund";
+  // and four AMFI entries share one name, so only prices can tell them apart.
+  const mk = (code: number, name: string, nav: number) => series(code, name, [["2024-01-01", nav], ["2024-02-01", nav * 1.1]]);
+  const cat = [
+    mk(1, "Axis Large & Mid Cap Fund - Direct Plan - Growth Option", 30),
+    mk(2, "Axis Midcap Fund - Direct Plan - Growth Option", 90),
+    mk(3, "HSBC Small Cap Equity Fund - Growth", 12),
+    mk(4, "HSBC Small Cap Fund", 40),
+    mk(5, "Motilal Oswal Multi Cap Fund", 11),
+    mk(6, "Motilal Oswal Multi Cap Fund", 15),
+    mk(7, "Motilal Oswal Multi Cap Fund", 17),
+  ];
+  const api: NavApi = {
+    search: async (q) => {
+      const words = q.split(" ");
+      return cat.filter((s) => words.every((w) => s.name.toLowerCase().includes(w))).map((s) => ({ schemeCode: s.code, schemeName: s.name }));
+    },
+    series: async (c) => cat.find((s) => s.code === c)!,
+  };
+  it("finds Midcap from Mid Cap", async () => {
+    expect((await resolveScheme({ name: "Axis Mid Cap Fund - Direct Growth", advisor: "DIRECT", anchors: [{ date: "2024-02-01", nav: 99 }] }, api))?.series.code).toBe(2);
+  });
+  it("accepts a bare AMFI name, since the price confirms it", async () => {
+    expect((await resolveScheme({ name: "HSBC Small Cap Fund - Direct Growth (Formerly known as L&T Emerging Businesses Fund Direct Growth)", advisor: "DIRECTONLINE", anchors: [{ date: "2024-01-01", nav: 40 }] }, api))?.series.code).toBe(4);
+  });
+  it("tells identically named entries apart by price", async () => {
+    expect((await resolveScheme({ name: "Motilal Oswal Multi Cap Fund - Direct Plan Growth", anchors: [{ date: "2024-02-01", nav: 16.5 }] }, api))?.series.code).toBe(6);
   });
 });
 
@@ -152,9 +186,133 @@ describe("goals", () => {
   });
   const goal: Goal = { id: "g", name: "House", target: 100_000, date: "2027-10-01", schemes: ["A", "Gone"], returnPct: 0 };
   it("uses SIPs on the linked schemes unless a monthly amount is set", () => {
-    const plans = [{ scheme: "A", amount: 5000, cadence: "Monthly", active: true }, { scheme: "B", amount: 9999, cadence: "Monthly", active: true }] as never;
+    const plans = [{ scheme: "A", monthly: 5000, active: true }, { scheme: "B", monthly: 9999, active: true }] as never;
     const p = projectGoal(goal, [scheme("A", "Equity", 40_000)], plans, "2026-10-01");
     expect(p).toMatchObject({ current: 40_000, monthly: 5000, fromSips: true, months: 12, projected: 100_000, onTrack: true, missing: ["Gone"] });
     expect(projectGoal({ ...goal, monthly: 1000 }, [scheme("A", "Equity", 40_000)], plans, "2026-10-01")).toMatchObject({ monthly: 1000, fromSips: false, onTrack: false });
+  });
+});
+
+
+const fund = (code: number, rows: [string, number, string?][], er: number | null = 0.5): FundHoldings => ({
+  code, name: `F${code}`, fetched: "2026-10-01", portfolioDate: "2026-08-31", expenseRatio: er,
+  holdings: rows.map(([id, weight, type]) => ({ id, name: id.toUpperCase(), sector: id === "hdfc" || id === "icici" ? "Financial" : "Tech", type: type ?? "EQUITY", weight })),
+});
+
+describe("fund overlap", () => {
+  const a = fund(1, [["hdfc", 10], ["icici", 5], ["infy", 4], ["tbill", 3, "GOVERNMENT SECURITIES"]]);
+  const b = fund(2, [["hdfc", 6], ["infy", 8], ["tbill", 20, "GOVERNMENT SECURITIES"]]);
+  it("sums the smaller weight over shared stocks and ignores non-equity", () => {
+    const o = pairOverlap(a, b);
+    expect(o.overlap).toBe(6 + 4); // hdfc min(10,6) + infy min(4,8); the T-bill isn't a stock
+    expect(o.shared.map((s) => s.id)).toEqual(["hdfc", "infy"]);
+  });
+  it("is symmetric, and 100 for identical portfolios", () => {
+    expect(pairOverlap(b, a).overlap).toBe(pairOverlap(a, b).overlap);
+    expect(pairOverlap(a, a).overlap).toBe(10 + 5 + 4);
+  });
+  it("ranks pairs and skips funds with no equity or nothing in common", () => {
+    const debt = fund(3, [["tbill", 90, "GOVERNMENT SECURITIES"]]);
+    const c = fund(4, [["zzz", 50]]);
+    const ranked = overlaps([{ name: "A", value: 1, fund: a }, { name: "B", value: 1, fund: b }, { name: "D", value: 1, fund: debt }, { name: "C", value: 1, fund: c }]);
+    expect(ranked).toHaveLength(1);
+    expect(ranked[0]).toMatchObject({ a: "A", b: "B", overlap: 10 });
+  });
+});
+
+describe("look-through", () => {
+  const inputs: FundInput[] = [
+    { name: "A", value: 100_000, fund: fund(1, [["hdfc", 10], ["infy", 5]]) },
+    { name: "B", value: 300_000, fund: fund(2, [["hdfc", 5], ["tcs", 2]]) },
+  ];
+  it("scales each fund's weights by what you hold and merges the same stock", () => {
+    const t = lookThrough(inputs, 500_000);
+    const hdfc = t.stocks.find((s) => s.id === "hdfc")!;
+    expect(hdfc.amount).toBe(10_000 + 15_000);
+    expect(hdfc.share).toBe(0.05);
+    expect(hdfc.funds).toEqual([{ name: "B", amount: 15_000 }, { name: "A", amount: 10_000 }]);
+    expect(t.stocks.map((s) => s.id)).toEqual(["hdfc", "tcs", "infy"]);
+    expect(t.equityAmount).toBe(25_000 + 6_000 + 5_000);
+    expect(t.coverage).toBe(0.8); // 400k of 500k sits in funds we have holdings for
+    expect(t.sectors).toEqual([
+      { sector: "Financial", amount: 25_000, share: 0.05 },
+      { sector: "Tech", amount: 11_000, share: 0.022 },
+    ]);
+  });
+});
+
+describe("costs", () => {
+  it("weights by value and leaves out funds with no published ratio", () => {
+    const c = costs([
+      { name: "A", value: 100_000, fund: fund(1, [], 1) },
+      { name: "B", value: 300_000, fund: fund(2, [], 0.5) },
+      { name: "Reg", value: 100_000, fund: fund(3, [], null) },
+    ], 500_000);
+    expect(c.annual).toBe(1000 + 1500);
+    expect(c.weighted).toBeCloseTo(0.625, 6);
+    expect(c.coverage).toBe(0.8);
+    expect(c.rows.map((r) => r.name)).toEqual(["B", "A", "Reg"]);
+  });
+  it("counts months since a disclosure", () => {
+    expect(monthsOld("2026-08-31", "2026-10-01")).toBe(2);
+  });
+});
+
+describe("resolveScheme keeps searching past misleading hits", () => {
+  // The compact spelling returns plausible-looking wrong funds; only the split spelling finds the real one.
+  const real = series(10, "Axis Small Cap Fund - Direct Plan - Growth", [["2024-01-01", 80], ["2024-02-01", 88]]);
+  const decoys = [11, 12, 13].map((c) => series(c, `Axis Smallcap Thing ${c} - Direct Plan - Growth`, [["2024-01-01", 5], ["2024-02-01", 6]]));
+  const api: NavApi = {
+    search: async (q) => (q.includes("smallcap") ? decoys : q.includes("small cap") ? [real] : []).map((s) => ({ schemeCode: s.code, schemeName: s.name })),
+    series: async (c) => [real, ...decoys].find((s) => s.code === c)!,
+  };
+  it("tries the other spelling instead of stopping at three hits", async () => {
+    const r = await resolveScheme({ name: "Axis Small Cap Fund Direct Growth", advisor: "DIRECT", anchors: [{ date: "2024-02-01", nav: 88 }] }, api);
+    expect(r?.series.code).toBe(10);
+  });
+});
+
+import { ndjson, planSync, serializeHoldings, settle } from "./helper";
+
+describe("holdings sync planning", () => {
+  const doc = (code: number, fetched: string, w = 5): FundHoldings => ({ ...fund(code, [["hdfc", w]]), fetched });
+  const existing = new Map([[1, doc(1, "2026-09-25")], [2, doc(2, "2026-08-01")]]);
+  const targets = [{ code: 1, name: "A" }, { code: 2, name: "B" }, { code: 3, name: "C" }, { code: 1, name: "A again" }];
+
+  it("skips recently fetched files and de-duplicates shared codes", () => {
+    expect(planSync(targets, existing, "2026-10-01")).toEqual({ fetch: [{ code: 2, name: "B" }, { code: 3, name: "C" }], fresh: [1] });
+    expect(planSync(targets, existing, "2026-10-01", true).fetch.map((t) => t.code)).toEqual([1, 2, 3]);
+  });
+  it("only writes what actually changed, and reports failures", () => {
+    const out = settle(
+      [
+        { code: 1, doc: doc(1, "2026-10-01") }, // same portfolio, newer date: not a change
+        { code: 2, doc: doc(2, "2026-10-01", 6) }, // weight moved
+        { code: 3, doc: doc(3, "2026-10-01") }, // new
+        { code: 4, error: "LookupError: no page" },
+      ],
+      existing,
+    );
+    expect(out.unchanged).toEqual([1]);
+    expect(out.changed.map((d) => d.code)).toEqual([2, 3]);
+    expect(out.failed).toEqual({ 4: "LookupError: no page" });
+  });
+  it("writes the same bytes the Python CLI does", () => {
+    expect(serializeHoldings(doc(1, "2026-10-01"))).toBe(JSON.stringify(doc(1, "2026-10-01"), null, 1) + "\n");
+  });
+});
+
+describe("ndjson", () => {
+  const stream = (chunks: string[]) =>
+    new ReadableStream<Uint8Array>({
+      start(c) {
+        for (const x of chunks) c.enqueue(new TextEncoder().encode(x));
+        c.close();
+      },
+    });
+  it("reassembles lines split across chunks, including multibyte text", async () => {
+    const out: unknown[] = [];
+    for await (const v of ndjson(stream(['{"a":1}\n{"b"', ':"₹ré"}\n', '{"c":3}']))) out.push(v);
+    expect(out).toEqual([{ a: 1 }, { b: "₹ré" }, { c: 3 }]);
   });
 });

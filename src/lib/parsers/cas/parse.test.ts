@@ -83,6 +83,9 @@ describe("helpers", () => {
     expect(classify("IDCW Reinvestment", 1, 10)).toBe("DIVIDEND_REINVEST");
     expect(classify("Switch Out - To Liquid", -5, -500)).toBe("SWITCH_OUT");
     expect(classify("Purchase", 5, 500)).toBe("PURCHASE");
+    // A bounced SIP is a reversal, never a sale. Real wording from a CAMS statement: "Rejection", not "Rejected".
+    expect(classify("Systematic Investment Rejection (1/36)", -53.163, -2000)).toBe("REVERSAL");
+    expect(classify("Systematic Investment Rejected - Insufficient Balance", -53.163, -2000)).toBe("REVERSAL");
   });
 });
 

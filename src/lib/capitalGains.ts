@@ -109,7 +109,7 @@ function match(name: string, amc: string, reported: string | undefined, opening:
 
   for (const t of sorted) {
     const units = unitsOf(t);
-    if (units < EPS) continue;
+    if (units < EPS && t.type !== "STAMP_DUTY") continue;
     switch (t.type) {
       case "PURCHASE":
       case "PURCHASE_SIP":
@@ -117,6 +117,13 @@ function match(name: string, amc: string, reported: string | undefined, opening:
       case "DIVIDEND_REINVEST":
         lots.push({ date: t.date, units, cost: amountOf(t) });
         break;
+      case "STAMP_DUTY": {
+        // Stamp duty is part of what a purchase cost (CAMS folds it into the cost value too). It sits on its own row
+        // right after the purchase, with no units: add it to the lot bought that day.
+        const lot = [...lots].reverse().find((l) => l.date === t.date);
+        if (lot) lot.cost += amountOf(t);
+        break;
+      }
       case "REVERSAL": {
         // A bounced purchase: take the units back out of the most recent lots.
         let left = units;

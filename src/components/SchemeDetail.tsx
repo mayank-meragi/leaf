@@ -9,7 +9,7 @@ import { flowOf, schemeKey, type SchemeSummary } from "@/lib/portfolio";
 import type { PnL } from "@/lib/pnl";
 import type { SipPlan } from "@/lib/sips";
 import { cn } from "@/lib/utils";
-import { Flags } from "./SipTracker";
+import { Flags, Schedule } from "./SipTracker";
 
 const TYPE_LABEL: Record<MFTxnType, string> = {
   PURCHASE: "Purchase",
@@ -76,13 +76,13 @@ function Body({ scheme: s, cg, pnl, plan }: Omit<Props, "onClose"> & { scheme: S
       {plan && (
         <div className="space-y-1 rounded-lg border px-4 py-3 text-sm">
           <div className="flex flex-wrap items-center gap-2">
-            <b>SIP</b> {money(plan.amount)} {plan.cadence.toLowerCase()}
-            {plan.cadence === "Monthly" && `, day ${plan.day}`}
-            {!plan.active && <span className="text-muted-foreground">· stopped</span>}
+            <b>{plan.active && plan.sips > 1 ? `${plan.sips} SIPs` : "SIP"}</b>
+            {plan.active ? ` ${money(plan.monthly)} a month` : null}
+            {!plan.active && <span className="text-muted-foreground"> stopped</span>}
             <Flags plan={plan} />
           </div>
           <div className="text-xs text-muted-foreground">
-            {plan.count} instalments since {day(plan.first)}, {money(plan.invested)} in total
+            <Schedule plan={plan} /> · {plan.count} instalments since {day(plan.first)}, {money(plan.invested)} in total
             {plan.stepUps.length > 0 && `; stepped up ${plan.stepUps.length}×, latest ${money(plan.stepUps.at(-1)!.from)} → ${money(plan.stepUps.at(-1)!.to)}`}
           </div>
         </div>

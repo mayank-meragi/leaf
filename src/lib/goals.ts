@@ -18,8 +18,6 @@ export interface GoalProjection {
   missing: string[];
 }
 
-const PER_MONTH = { Weekly: 52 / 12, Monthly: 1, Quarterly: 1 / 3, Irregular: 0 } as const;
-
 /** Whole months from `today` to `date`, never negative. */
 export function monthsUntil(date: string, today: string) {
   const [y1, m1, d1] = today.split("-").map(Number);
@@ -46,7 +44,7 @@ export function projectGoal(goal: Goal, schemes: SchemeSummary[], plans: SipPlan
   const linked = new Set(goal.schemes.map(schemeKey));
   const held = schemes.filter((s) => linked.has(schemeKey(s.name)));
   const current = held.reduce((s, x) => s + x.value, 0);
-  const sipMonthly = plans.filter((p) => p.active && linked.has(schemeKey(p.scheme))).reduce((s, p) => s + p.amount * PER_MONTH[p.cadence], 0);
+  const sipMonthly = plans.filter((p) => p.active && linked.has(schemeKey(p.scheme))).reduce((s, p) => s + p.monthly, 0);
   const fromSips = goal.monthly == null;
   const monthly = goal.monthly ?? sipMonthly;
   const months = monthsUntil(goal.date, today);

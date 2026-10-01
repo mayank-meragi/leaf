@@ -20,6 +20,7 @@ import CapitalGains from "./CapitalGains";
 import SchemeDetail from "./SchemeDetail";
 import SipTracker from "./SipTracker";
 import Goals from "./Goals";
+import LookThrough from "./LookThrough";
 import PlanMix from "./PlanMix";
 import Performance from "./Performance";
 import Rebalance from "./Rebalance";
@@ -144,6 +145,7 @@ export default function Investments({ store, data, reload, setData }: ViewProps)
               <TabsTrigger value="holdings">Holdings</TabsTrigger>
               <TabsTrigger value="income">SIPs &amp; gains</TabsTrigger>
               <TabsTrigger value="performance">Performance</TabsTrigger>
+              <TabsTrigger value="lookthrough">Look-through</TabsTrigger>
               <TabsTrigger value="plan">Plan</TabsTrigger>
             </TabsList>
 
@@ -218,6 +220,10 @@ export default function Investments({ store, data, reload, setData }: ViewProps)
 
             <TabsContent value="performance">
               <Performance store={store} data={data} setData={setData} />
+            </TabsContent>
+
+            <TabsContent value="lookthrough">
+              <LookThrough store={store} schemes={summary.schemes} />
             </TabsContent>
 
             <TabsContent value="plan" className="space-y-4">

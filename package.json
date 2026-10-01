@@ -8,7 +8,9 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "typecheck": "tsc -b"
+    "typecheck": "tsc -b",
+    "holdings-helper": "cd backend && python3 -m leaf_backend.serve",
+    "test:backend": "cd backend && python3 -m unittest discover -s tests -t ."
   },
   "dependencies": {
     "@google/genai": "^2.24.0",

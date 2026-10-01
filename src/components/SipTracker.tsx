@@ -24,8 +24,8 @@ export default function SipTracker({ statements, onOpen }: { statements: CASStat
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid gap-3 sm:grid-cols-3">
-          <Tile label="Active SIPs" value={String(summary.active.length)} sub={stopped.length ? `${stopped.length} stopped` : undefined} />
-          <Tile label="Monthly outflow" value={money(summary.monthlyOutflow)} sub="Across active SIPs" />
+          <Tile label="Active SIPs" value={String(summary.activeSips)} sub={`instalments a month, across ${summary.active.length} fund${summary.active.length === 1 ? "" : "s"}${stopped.length ? ` · ${stopped.length} fund${stopped.length === 1 ? "" : "s"} stopped` : ""}`} />
+          <Tile label="Monthly outflow" value={money(summary.monthlyOutflow)} sub="What running SIPs put in each month" />
           <Tile label="Missed or bounced" value={String(issues)} sub="Instalments in active SIPs" warn={issues > 0} />
         </div>
 
@@ -34,7 +34,7 @@ export default function SipTracker({ statements, onOpen }: { statements: CASStat
             <TableHeader>
               <TableRow>
                 <TableHead>Scheme</TableHead>
-                <TableHead className="text-right">Amount</TableHead>
+                <TableHead className="text-right">Per month</TableHead>
                 <TableHead>Schedule</TableHead>
                 <TableHead className="text-right">Instalments</TableHead>
                 <TableHead className="text-right">Invested</TableHead>
@@ -53,12 +53,11 @@ export default function SipTracker({ statements, onOpen }: { statements: CASStat
                     </div>
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
-                    {money(p.amount)}
-                    {p.stepUps.length > 0 && <div className="text-xs text-muted-foreground">↑ from {money(p.stepUps[0].from)}</div>}
+                    {p.active ? money(p.monthly) : "—"}
+                    {p.stepUps.length > 0 && <div className="text-xs text-muted-foreground">↑ stepped up {p.stepUps.length}×</div>}
                   </TableCell>
                   <TableCell className="whitespace-nowrap">
-                    {p.cadence}
-                    {p.cadence === "Monthly" && <span className="text-muted-foreground"> · day {p.day}</span>}
+                    <Schedule plan={p} />
                   </TableCell>
                   <TableCell className="text-right tabular-nums">{p.count}</TableCell>
                   <TableCell className="text-right tabular-nums">{money(p.invested)}</TableCell>
@@ -87,6 +86,29 @@ export default function SipTracker({ statements, onOpen }: { statements: CASStat
         </p>
       </CardContent>
     </Card>
+  );
+}
+
+/** "Monthly · day 15" for a single SIP, "3 SIPs" with the due days underneath when a fund has several. */
+export function Schedule({ plan: p }: { plan: SipPlan }) {
+  const running = p.streams.filter((s) => s.active);
+  const shown = running.length ? running : p.streams;
+  const sips = shown.reduce((n, s) => n + s.perMonth, 0);
+  if (sips === 1) {
+    const s = shown[0];
+    return (
+      <>
+        {s.cadence}
+        {s.cadence === "Monthly" && <span className="text-muted-foreground"> · day {s.day}</span>}
+      </>
+    );
+  }
+  const dayList = [...new Set(shown.map((s) => s.day))].sort((a, b) => a - b);
+  return (
+    <span title={shown.map((s) => `${money(s.monthly)} a month on day ${s.day}${s.folio ? `, folio ${s.folio}` : ""}`).join("\n")}>
+      {sips} SIPs
+      <span className="block text-xs text-muted-foreground">day {dayList.join(", ")}</span>
+    </span>
   );
 }
 

@@ -62,6 +62,14 @@ describe("capitalGains", () => {
     expect(cg.unmatched[0]).toMatchObject({ units: 10, proceeds: 300 });
   });
 
+  it("adds stamp duty to the cost of the lot bought that day", () => {
+    const stamp = (date: string, amount: number): MFTransaction => ({ date, description: "Stamp Duty", amount, units: null, nav: null, balance: null, type: "STAMP_DUTY" });
+    const cg = capitalGains([statement("Iota Flexi Cap Fund", 0, 5, [tx("PURCHASE_SIP", "2024-01-10", 999.95, 10), stamp("2024-01-10", 0.05), stamp("2023-12-01", 7), tx("REDEMPTION", "2024-08-01", -600, -5)])]);
+    // Half of the lot (cost 1000.00 including stamp duty) is sold; the stamp duty on a day with no purchase is ignored.
+    expect(cg.lots[0].cost).toBeCloseTo(500, 6);
+    expect(cg.open[0].cost).toBeCloseTo(500, 6);
+  });
+
   it("treats a bounced SIP as never bought", () => {
     const cg = capitalGains([
       statement("Gamma Flexi Cap Fund", 0, 0, [

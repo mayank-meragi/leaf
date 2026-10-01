@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "typecheck": "tsc -b",
-    "holdings-helper": "cd backend && python3 -m leaf_backend.serve",
+    "holdings-helper": "sh backend/run_helper.sh",
     "test:backend": "cd backend && python3 -m unittest discover -s tests -t ."
   },
   "dependencies": {

@@ -107,6 +107,12 @@ function SyncBar({ store, targets, saved, onDone }: { store: ViewProps["store"];
       }
       onDone();
 
+      const reasons = Object.values(out.failed);
+      if (reasons.length && reasons.length === plan.fetch.length) {
+        // Everything failed: that's the helper or the network, not 24 separate problems.
+        toast.error("Couldn't fetch any fund holdings", { description: `${[...new Set(reasons)][0]}\nCheck the terminal where the helper is running.` });
+        return;
+      }
       const failed = Object.entries(out.failed).map(([code, why]) => `${targets.find((t) => t.code === Number(code))?.name ?? code}: ${why}`);
       const summary = `${out.changed.length} updated, ${out.unchanged.length + plan.fresh.length} already current`;
       if (failed.length) toast.warning(`${summary}, ${failed.length} failed`, { description: failed.join("\n") });

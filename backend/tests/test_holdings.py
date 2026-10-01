@@ -1,6 +1,7 @@
 import json
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 from leaf_backend import holdings as h
@@ -41,6 +42,43 @@ class FakeHttp:
 
 
 CATALOGUE = {"alpha-flexi-cap-direct-growth": ("111", "Alpha Flexi Cap Fund")}
+
+
+class GetJsonTests(unittest.TestCase):
+    """Retry what can pass on a second try; fail at once on what can't."""
+
+    def run_get(self, raiser):
+        slept = []
+        calls = []
+
+        def fake_urlopen(*a, **k):
+            calls.append(1)
+            raise raiser()
+
+        with mock.patch.object(h.urllib.request, "urlopen", fake_urlopen), mock.patch.object(h.time, "sleep", slept.append):
+            with self.assertRaises(Exception) as cm:
+                h.get_json("https://example.test/x")
+        return cm.exception, len(calls), slept
+
+    def test_a_python_without_ssl_fails_immediately_with_advice(self):
+        err, calls, slept = self.run_get(lambda: h.urllib.error.URLError("unknown url type: https"))
+        self.assertEqual((calls, slept), (1, []))  # no pointless waiting
+        self.assertIn("without working SSL", str(err))
+        self.assertIn("holdings-helper", str(err))
+
+    def test_server_errors_are_retried_with_backoff(self):
+        err, calls, slept = self.run_get(lambda: h.urllib.error.HTTPError("u", 503, "busy", {}, None))
+        self.assertEqual((calls, slept), (3, [1, 2, 4]))
+        self.assertIn("giving up", str(err))
+
+    def test_dropped_connections_are_retried(self):
+        _, calls, _ = self.run_get(lambda: h.urllib.error.URLError(ConnectionResetError("reset")))
+        self.assertEqual(calls, 3)
+
+    def test_client_errors_are_not_retried(self):
+        err, calls, slept = self.run_get(lambda: h.urllib.error.HTTPError("u", 404, "nope", {}, None))
+        self.assertEqual((calls, slept), (1, []))
+        self.assertIsInstance(err, h.urllib.error.HTTPError)
 
 
 class QueryTests(unittest.TestCase):

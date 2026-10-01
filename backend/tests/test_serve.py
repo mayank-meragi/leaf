@@ -4,7 +4,7 @@ import unittest
 import urllib.error
 import urllib.request
 
-from leaf_backend.serve import MAX_SCHEMES, make_server
+from leaf_backend.serve import MAX_SCHEMES, environment_problem, make_server
 
 ORIGIN = "http://localhost:5180"
 
@@ -37,6 +37,13 @@ class ServerTests(unittest.TestCase):
                 return r.status, dict(r.headers), r.read().decode()
         except urllib.error.HTTPError as e:
             return e.code, dict(e.headers), e.read().decode()
+
+    def test_health_reports_the_python_in_use(self):
+        _, _, body = self.call("/health")
+        self.assertRegex(json.loads(body)["python"], r"^3\.\d+")
+
+    def test_this_environment_passes_its_own_check(self):
+        self.assertIsNone(environment_problem())
 
     def test_binds_to_loopback_only(self):
         self.assertEqual(self.server.server_address[0], "127.0.0.1")

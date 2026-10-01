@@ -27,6 +27,19 @@ MAX_BODY = 64 * 1024
 Fetcher = Callable[[int, str], dict]
 
 
+def environment_problem() -> str | None:
+    """Why this Python can't do the job, or None. Checked at startup so a broken interpreter fails loudly, not per scheme."""
+    if sys.version_info < (3, 9):
+        return f"Python {sys.version.split()[0]} is too old; the helper needs 3.9 or newer."
+    try:
+        import ssl
+
+        ssl.create_default_context()
+    except Exception as e:  # ImportError when the interpreter was built without OpenSSL, among others
+        return f"This Python can't make HTTPS requests ({type(e).__name__}: {str(e).splitlines()[0]})."
+    return None
+
+
 class Handler(BaseHTTPRequestHandler):
     # Set by `make_server`; class attributes so the stdlib handler stays constructor-compatible.
     origins: frozenset[str] = frozenset(DEFAULT_ORIGINS)
@@ -76,7 +89,7 @@ class Handler(BaseHTTPRequestHandler):
         if not self._origin_ok():
             return self._json(403, {"error": "origin not allowed"})
         if self.path == "/health":
-            return self._json(200, {"ok": True, "name": "leaf-helper", "version": 1})
+            return self._json(200, {"ok": True, "name": "leaf-helper", "version": 1, "python": sys.version.split()[0]})
         self._json(404, {"error": "not found"})
 
     def do_POST(self):  # noqa: N802
@@ -129,9 +142,13 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--origin", action="append", help="allow this web origin (repeatable); default: the Leaf dev server")
     p.add_argument("--delay", type=float, default=0.5, help="seconds between schemes")
     a = p.parse_args(argv)
+    problem = environment_problem()
+    if problem:
+        print(f"{problem}\nStart the helper with `pnpm holdings-helper`, which picks a working Python, or set LEAF_PYTHON.", file=sys.stderr)
+        return 2
     origins = tuple(a.origin) if a.origin else DEFAULT_ORIGINS
     server = make_server(a.port, origins, delay=a.delay)
-    print(f"Leaf helper listening on http://127.0.0.1:{a.port} for {', '.join(origins)}\nPress Ctrl+C to stop.")
+    print(f"Leaf helper (Python {sys.version.split()[0]}) listening on http://127.0.0.1:{a.port} for {', '.join(origins)}\nPress Ctrl+C to stop.")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

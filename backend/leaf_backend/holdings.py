@@ -33,6 +33,7 @@ GetJSON = Callable[[str], dict]
 
 
 def get_json(url: str, retries: int = 3, timeout: int = 30) -> dict:
+    """GET and parse JSON, retrying only failures that can pass on a second try (rate limits, server errors, dropped connections)."""
     last: Exception | None = None
     for attempt in range(retries):
         try:
@@ -44,6 +45,15 @@ def get_json(url: str, retries: int = 3, timeout: int = 30) -> dict:
                 raise
             last = e
         except urllib.error.URLError as e:
+            # A reason that isn't an OS-level error means the request could never be made (for example
+            # "unknown url type: https" from a Python built without SSL): retrying only wastes time.
+            if not isinstance(e.reason, OSError):
+                raise RuntimeError(
+                    f"can't make this request: {e.reason}. "
+                    "If it mentions https, this Python was built without working SSL; start the helper with `pnpm holdings-helper`, which picks one that has it."
+                ) from e
+            last = e
+        except (TimeoutError, ConnectionError) as e:
             last = e
         time.sleep(2**attempt)
     raise RuntimeError(f"giving up on {url}: {last}")

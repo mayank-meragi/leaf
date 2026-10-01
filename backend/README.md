@@ -7,11 +7,16 @@ Nothing here is hosted, scheduled or deployed.
 
 ## Fund holdings and expense ratios
 
-Start the helper (Python 3.11+, no packages to install), and leave it running while you use the app:
+Start the helper (Python 3.9+ with working HTTPS, no packages to install), and leave it running while you use the app:
 
 ```bash
-pnpm holdings-helper        # or: cd backend && python3 -m leaf_backend.serve
+pnpm holdings-helper        # or: sh backend/run_helper.sh
 ```
+
+The launcher picks the first Python on your machine that can make HTTPS requests. That matters more than it sounds: a
+pyenv build missing its OpenSSL imports fine but can't fetch anything, and plain `python3` is often that one. To choose
+one yourself, set `LEAF_PYTHON=/path/to/python`. If the interpreter is unusable the helper says so at startup instead of
+failing scheme by scheme.
 
 Then open **Investments > Look-through** and click **Sync fund holdings**. The helper fetches each fund's stock
 holdings, weights, sectors and expense ratio. The app then saves them to your data repo as

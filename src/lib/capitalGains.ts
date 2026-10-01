@@ -177,8 +177,15 @@ export interface SchemeGroup {
   name: string;
   amc: string;
   reported?: string;
+  isin?: string;
+  advisor?: string;
   opening: number;
   close: number;
+  /** Statement valuation (sum over folios) and its date. */
+  value: number;
+  asOf: string;
+  /** NAV the statement valued the scheme at, as a price anchor. */
+  nav?: number;
   txns: MFTransaction[];
 }
 
@@ -188,7 +195,7 @@ export function groupSchemes(statements: CASStatement[]): SchemeGroup[] {
   const group = (name: string, amc: string) => {
     const k = schemeKey(name);
     let g = groups.get(k);
-    if (!g) groups.set(k, (g = { name: name.trim(), amc, opening: 0, close: 0, txns: [] }));
+    if (!g) groups.set(k, (g = { name: name.trim(), amc, opening: 0, close: 0, value: 0, asOf: "", txns: [] }));
     return g;
   };
 
@@ -197,8 +204,14 @@ export function groupSchemes(statements: CASStatement[]): SchemeGroup[] {
       for (const sc of f.schemes) {
         const g = group(sc.name, f.amc);
         g.reported ??= sc.assetClass;
+        g.isin ??= sc.isin;
+        g.advisor ??= sc.advisor;
         g.opening += sc.open ?? 0;
         g.close += sc.close ?? 0;
+        g.value += sc.valuation?.value ?? 0;
+        const at = sc.valuation?.date || s.statementPeriod.to;
+        if (at > g.asOf) g.asOf = at;
+        if (sc.valuation?.nav) g.nav ??= sc.valuation.nav;
         g.txns.push(...sc.transactions);
       }
     for (const st of s.schemeTransactions ?? []) group(st.scheme, st.amc ?? "").txns.push(...st.transactions);

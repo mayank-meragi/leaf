@@ -102,6 +102,8 @@ export interface SchemeSummary {
   value: number;
   cost: number;
   xirr: number | null;
+  isin?: string;
+  advisor?: string;
   transactions: MFTransaction[];
   /** Valuation date. */
   asOf: string;
@@ -144,6 +146,8 @@ interface Group {
   amc: string;
   folios: Set<string>;
   reported?: string;
+  isin?: string;
+  advisor?: string;
   units: number;
   opening: number;
   value: number;
@@ -174,6 +178,8 @@ export function summarize(statements: CASStatement[]): PortfolioSummary {
         const g = group(sc.name, f.amc, sc.valuation?.date || asOf);
         g.folios.add(f.folio);
         g.reported ??= sc.assetClass;
+        g.isin ??= sc.isin;
+        g.advisor ??= sc.advisor;
         g.units += sc.close ?? 0;
         g.opening += sc.open ?? 0;
         g.value += sc.valuation?.value ?? 0;
@@ -214,6 +220,8 @@ export function summarize(statements: CASStatement[]): PortfolioSummary {
       value: g.value,
       cost: g.cost,
       xirr: rate,
+      isin: g.isin,
+      advisor: g.advisor,
       transactions: g.txns,
       asOf: g.asOf,
       fullHistory,

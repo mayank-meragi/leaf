@@ -30,6 +30,25 @@ export interface LeafConfig {
   skippedCasMessages?: string[];
   /** "Everything from/to this counterparty is X": applied to past transactions and every future sync. */
   categoryRules?: CategoryRule[];
+  /** Target share of the mutual fund portfolio per asset class, in percent (sums to 100). */
+  rebalanceTargets?: Record<string, number>;
+  /** AMFI scheme code of the index fund used as the benchmark for mutual fund returns. */
+  benchmark?: number;
+  goals?: Goal[];
+}
+
+export interface Goal {
+  id: string;
+  name: string;
+  target: number;
+  /** When the money is needed. */
+  date: ISODate;
+  /** Names of the mutual fund schemes earmarked for it. */
+  schemes: string[];
+  /** Assumed annual return, in percent. */
+  returnPct: number;
+  /** Monthly amount going in; when unset, the SIPs found on the linked schemes are used. */
+  monthly?: number;
 }
 
 export interface CategoryRule {

@@ -19,8 +19,13 @@ import Allocation from "./Allocation";
 import CapitalGains from "./CapitalGains";
 import SchemeDetail from "./SchemeDetail";
 import SipTracker from "./SipTracker";
+import Goals from "./Goals";
+import PlanMix from "./PlanMix";
+import Performance from "./Performance";
+import Rebalance from "./Rebalance";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-export default function Investments({ store, data, reload }: ViewProps) {
+export default function Investments({ store, data, reload, setData }: ViewProps) {
   const summary = useMemo(() => summarize(data.statements), [data.statements]);
   const cg = useMemo(() => capitalGains(data.statements), [data.statements]);
   const pnl = useMemo(() => computePnL(data.statements, cg), [data.statements, cg]);
@@ -134,6 +139,15 @@ export default function Investments({ store, data, reload }: ViewProps) {
             <Stat label="Dividends" value={money(pnl.dividends)} sub="Paid out or reinvested" />
           </div>
 
+          <Tabs defaultValue="holdings" className="gap-4">
+            <TabsList>
+              <TabsTrigger value="holdings">Holdings</TabsTrigger>
+              <TabsTrigger value="income">SIPs &amp; gains</TabsTrigger>
+              <TabsTrigger value="performance">Performance</TabsTrigger>
+              <TabsTrigger value="plan">Plan</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="holdings" className="space-y-4">
           {partial.length > 0 && (
             <div className="flex gap-3 rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm">
               <InfoIcon className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
@@ -194,9 +208,24 @@ export default function Investments({ store, data, reload }: ViewProps) {
             </CardContent>
           </Card>
 
+            </TabsContent>
+
+            <TabsContent value="income" className="space-y-4">
           <SipTracker statements={data.statements} onOpen={(name) => setSelected(summary.schemes.find((x) => schemeKey(x.name) === schemeKey(name))?.name ?? null)} />
 
           <CapitalGains statements={data.statements} />
+            </TabsContent>
+
+            <TabsContent value="performance">
+              <Performance store={store} data={data} setData={setData} />
+            </TabsContent>
+
+            <TabsContent value="plan" className="space-y-4">
+              <Rebalance store={store} data={data} setData={setData} schemes={summary.schemes} />
+              <Goals store={store} data={data} setData={setData} schemes={summary.schemes} />
+              <PlanMix schemes={summary.schemes} />
+            </TabsContent>
+          </Tabs>
         </>
       ) : (
         <Card className="py-16 text-center text-sm text-muted-foreground">

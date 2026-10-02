@@ -22,7 +22,15 @@ export const DOC_KINDS = [
 const DocSchema = z.object({
   kind: z.enum(DOC_KINDS).describe("What the document is. 'other' if it isn't one of these."),
   institution: z.string().describe("Issuer: bank, employer, insurer, EPFO, CRA (Protean/KFintech), broker…"),
-  reference: z.string().describe("Account / UAN / PRAN / policy / loan number as shown (masked is fine)"),
+  reference: z.string().describe("Account / UAN / PRAN / policy / loan number as shown (masked is fine). For EPF this is the UAN"),
+  // epf
+  memberId: z
+    .string()
+    .describe("epf_passbook: the Member ID / PF account number for this employer (e.g. 'MHBAN00123450000012345'), NOT the UAN, which is the same across employers; else empty"),
+  employer: z.string().describe("epf_passbook: establishment (employer) name this passbook is for; else empty"),
+  epfEmployeeShare: z.number().describe("epf_passbook: closing balance of the employee share (EPF); else 0"),
+  epfEmployerShare: z.number().describe("epf_passbook: closing balance of the employer share (EPF); else 0"),
+  epfPension: z.number().describe("epf_passbook: closing pension (EPS) balance if shown, which is NOT part of balance; else 0"),
   asOfDate: z.string().describe("Date the balance or document is as of, YYYY-MM-DD; else empty"),
   balance: z
     .number()

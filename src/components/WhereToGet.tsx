@@ -11,6 +11,10 @@ interface Source {
 // Where each document lives when it doesn't arrive by email. Download it, then use "Import document".
 const SOURCES: Source[] = [
   {
+    what: "Bank statements",
+    how: "Net banking or the bank's app → account statement for a date range (PDF, XLSX or CSV; HDFC, Axis and others). Import it as “Bank statement”: spending, income and the available balance are worked out from it. Overlapping statements are fine.",
+  },
+  {
     what: "NPS",
     auto: "Automatic from Protean's emails: contributions, plus the monthly statement once its password is saved.",
     how: "Or download a Transaction Statement from the CRA site or the “NPS by Protean” app.",

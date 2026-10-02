@@ -19,6 +19,7 @@ import { parseSalaryCredit, payMonthHint } from "./payroll";
 import { parseNpsContribution, resolveNpsAccount } from "./nps";
 import { accountTail } from "./wealth";
 import type { ExtractedTxn, Extractor } from "./ai/extract";
+import { withoutStatementDuplicates } from "./bankStatement";
 import { applyRules } from "./categories";
 import { CARD_PAYMENTS_PATH, CARD_STATEMENTS_PATH, PATHS, monthShards, statementPath, type LeafData } from "./db";
 import type { GitHubStore } from "./github/store";
@@ -140,8 +141,8 @@ export async function sync(
         const emails = await fetchAll(ids.slice(i, i + CHUNK), `Fetching emails (from ${i})`);
         const extracted = await extractor.extract(emails, () => log(`Extracting with Gemini ${i + emails.length}/${ids.length}…`));
         const batch = emails.flatMap((e) => (extracted.has(e.id) ? [toTxn(email, e, extracted.get(e.id)!)] : []));
-        // The user's per-counterparty rules beat the model's guess.
-        newTxns.push(...applyRules(config, batch));
+        // The user's per-counterparty rules beat the model's guess; a bank statement already covering an alert wins over it.
+        newTxns.push(...applyRules(config, withoutStatementDuplicates(batch, data.transactions)));
       }
 
       // One-time re-read of recent transactions from an older parser, for balance / card type.

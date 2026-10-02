@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { BookOpenIcon, FileUpIcon, LandmarkIcon, PieChartIcon } from "lucide-react";
+import { BookOpenIcon, FileUpIcon, LandmarkIcon, PieChartIcon, ReceiptIndianRupeeIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -14,6 +14,7 @@ export default function ImportMenu(props: ViewProps) {
   const [help, setHelp] = useState(false);
   const doc = useRef<Opener>(null);
   const cas = useRef<Opener>(null);
+  const bank = useRef<Opener>(null);
 
   const pick = (o: React.RefObject<Opener | null>) => {
     setOpen(false);
@@ -31,6 +32,7 @@ export default function ImportMenu(props: ViewProps) {
         </PopoverTrigger>
         <PopoverContent align="end" className="w-72 p-1.5">
           <Item icon={PieChartIcon} title="Mutual fund statement" hint="CAMS / KFintech CAS PDF or MF Central XLSX" onClick={() => pick(cas)} />
+          <Item icon={ReceiptIndianRupeeIcon} title="Bank statement" hint="HDFC, Axis, … account or credit card statement (PDF, XLSX, CSV)" onClick={() => pick(bank)} />
           <Item icon={LandmarkIcon} title="Other document" hint="Payslip, Form 16, EPF / NPS / PPF, FD, loan, insurance" onClick={() => pick(doc)} />
           <div className="my-1 border-t" />
           <Item
@@ -45,6 +47,7 @@ export default function ImportMenu(props: ViewProps) {
       </Popover>
       <ImportCas {...props} ref={cas} />
       <ImportDocument {...props} ref={doc} />
+      <ImportDocument {...props} mode="statement" ref={bank} />
       <Dialog open={help} onOpenChange={setHelp}>
         <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>

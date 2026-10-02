@@ -12,7 +12,7 @@ const empty: LeafData = {
 };
 const blank: DocExtraction = {
   kind: "other", institution: "", reference: "", asOfDate: "", balance: 0, payMonth: "", gross: 0, net: 0, tds: 0,
-  pfEmployee: 0, pfEmployer: 0, financialYear: "", taxableIncome: 0, policyType: "", cover: 0, premium: 0,
+  memberId: "", employer: "", epfEmployeeShare: 0, epfEmployerShare: 0, epfPension: 0, pfEmployee: 0, pfEmployer: 0, financialYear: "", taxableIncome: 0, policyType: "", cover: 0, premium: 0,
   renewalDate: "", insured: "", emi: 0, summary: "",
 };
 const src = { kind: "upload", fileName: "x.pdf" } as const;
@@ -47,6 +47,27 @@ describe("applyDocument", () => {
     expect(second.description).toMatch(/^Update/);
   });
 
+  it("keeps a separate EPF account per employer even though the UAN is the same", () => {
+    const passbook = (employer: string, memberId: string, balance: number, asOfDate = "2026-09-30") =>
+      ({ ...blank, kind: "epf_passbook" as const, institution: "EPFO", reference: "UAN 100020004321", employer, memberId, asOfDate, balance });
+    let data = empty;
+    const add = (x: DocExtraction) => {
+      const r = applyDocument(x, data, src, "2026-10-01");
+      data = { ...data, wealthAccounts: r.files[PATHS.wealthAccounts] as WealthAccount[], wealthSnapshots: r.files[PATHS.wealthSnapshots] as LeafData["wealthSnapshots"] };
+      return r;
+    };
+    add(passbook("Acme Pvt Ltd", "MHBAN00123450000012345", 300000));
+    add(passbook("Globex Ltd", "KNBNG00987650000067890", 120000));
+    expect(data.wealthAccounts).toMatchObject([{ name: "EPF · Acme Pvt Ltd", ref: "••2345" }, { name: "EPF · Globex Ltd", ref: "••7890" }]);
+    expect(data.wealthSnapshots.map((s) => s.value).sort()).toEqual([120000, 300000]);
+
+    // A newer passbook for one employer updates that account only; the employer's name alone is enough too.
+    add(passbook("Acme Pvt Ltd", "MHBAN00123450000012345", 320000, "2026-10-31"));
+    add({ ...passbook("Globex Ltd", "", 125000, "2026-10-31") });
+    expect(data.wealthAccounts).toHaveLength(2);
+    expect(data.wealthSnapshots).toHaveLength(4);
+  });
+
   it("files payslips, replacing a re-upload of the same month", () => {
     const x = { ...blank, kind: "payslip" as const, institution: "Acme", payMonth: "2026-09", gross: 200000, net: 150000, tds: 30000, pfEmployee: 1800 };
     const once = applyDocument(x, empty, src, "2026-10-01");
@@ -64,5 +85,23 @@ describe("applyDocument", () => {
   it("refuses documents it can't use", () => {
     expect(() => applyDocument({ ...blank, kind: "ppf_statement" }, empty, src, "2026-10-01")).toThrow(/balance/);
     expect(() => applyDocument(blank, empty, src, "2026-10-01")).toThrow(/doesn't look like/);
+  });
+});
+
+describe("epfOverview", () => {
+  it("combines employers, and carries each account's latest balance into the history", async () => {
+    const { epfOverview } = await import("./epf");
+    const accounts: WealthAccount[] = [
+      { id: "a", kind: "epf", name: "EPF · Acme" },
+      { id: "b", kind: "epf", name: "EPF · Globex" },
+      { id: "n", kind: "nps", name: "NPS" },
+    ];
+    const snap = (account: string, date: string, value: number) => ({ account, date, value, source: src });
+    const o = epfOverview(accounts, [snap("a", "2026-03-31", 100), snap("b", "2026-06-30", 40), snap("a", "2026-09-30", 150), snap("n", "2026-09-30", 999)], [], "2026-10-01");
+    expect(o.total).toBe(190);
+    expect(o.accounts.map((x) => x.account.id)).toEqual(["a", "b"]);
+    expect(o.accounts[0].share).toBeCloseTo(150 / 190);
+    expect(o.history).toEqual([{ date: "2026-03-31", value: 100 }, { date: "2026-06-30", value: 140 }, { date: "2026-09-30", value: 190 }]);
+    expect(o.asOf).toBe("2026-06-30");
   });
 });

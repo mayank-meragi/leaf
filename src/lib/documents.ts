@@ -6,7 +6,7 @@ import type { LeafData } from "./db";
 import { PATHS } from "./db";
 import { employerKey } from "./payroll";
 import { npsAccount } from "./nps";
-import { financialYear, matchAccount, newAccountId } from "./wealth";
+import { financialYear, matchAccount, matchEpfAccount, newAccountId } from "./wealth";
 
 export class NeedsPasswordError extends Error {}
 
@@ -100,8 +100,11 @@ export function applyDocument(x: DocExtraction, data: LeafData, source: DocSourc
 
   if (wealthKind) {
     if (!(x.balance > 0)) throw new Error("Couldn't find a balance in this document");
-    const ref = masked(x.reference);
-    let account = matchAccount(data.wealthAccounts, wealthKind, x.institution, x.reference);
+    // An EPF passbook is per employer: the UAN is shared, so identify it by member ID and employer instead.
+    const isEpf = wealthKind === "epf";
+    const employer = isEpf ? x.employer.trim() : "";
+    const ref = masked(isEpf && x.memberId ? x.memberId : x.reference);
+    let account = isEpf ? matchEpfAccount(data.wealthAccounts, x.memberId, employer) : matchAccount(data.wealthAccounts, wealthKind, x.institution, x.reference);
     const accounts = [...data.wealthAccounts];
     if (!account) {
       // An NPS account gets the same id the Gmail sync derives from the PRAN, so the two can never create it twice.
@@ -109,11 +112,14 @@ export function applyDocument(x: DocExtraction, data: LeafData, source: DocSourc
       account =
         wealthKind === "nps" && pran.length >= 3
           ? npsAccount(pran, 1)
-          : { id: newAccountId(wealthKind), kind: wealthKind, name: [x.institution, DEFAULT_NAME[wealthKind]].filter(Boolean).join(" "), institution: x.institution || undefined, ref };
+          : isEpf && employer
+            ? { id: newAccountId(wealthKind), kind: wealthKind, name: `EPF · ${employer}`, institution: employer, ref }
+            : { id: newAccountId(wealthKind), kind: wealthKind, name: [x.institution, DEFAULT_NAME[wealthKind]].filter(Boolean).join(" "), institution: x.institution || undefined, ref };
       accounts.push(account);
     }
     const date = iso(x.asOfDate) ?? today;
-    const snapshot: WealthSnapshot = { account: account.id, date, value: x.balance, source };
+    const breakdown = isEpf && x.epfEmployeeShare + x.epfEmployerShare > 0 ? { employee: x.epfEmployeeShare, employer: x.epfEmployerShare, pension: x.epfPension || undefined } : undefined;
+    const snapshot: WealthSnapshot = { account: account.id, date, value: x.balance, breakdown, source };
     const snapshots = [...data.wealthSnapshots.filter((s) => !(s.account === account!.id && s.date === date)), snapshot];
     return {
       files: { [PATHS.wealthAccounts]: accounts, [PATHS.wealthSnapshots]: snapshots },

@@ -204,6 +204,8 @@ export interface WealthSnapshot {
   date: ISODate;
   /** Always positive; liabilities are subtracted by kind. */
   value: number;
+  /** EPF passbooks: how the balance splits. The pension (EPS) share isn't part of `value`. */
+  breakdown?: { employee: number; employer: number; pension?: number };
   source: DocSource;
 }
 
@@ -232,7 +234,8 @@ export type DocKind =
   | "loan_statement"
   | "payslip"
   | "form16"
-  | "insurance_policy";
+  | "insurance_policy"
+  | "bank_statement";
 
 export interface Payslip {
   month: string; // YYYY-MM

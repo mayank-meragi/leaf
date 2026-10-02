@@ -103,6 +103,25 @@ export function matchAccount(accounts: WealthAccount[], kind: WealthKind, instit
   return same.length === 1 && !digits ? same[0] : undefined;
 }
 
+/**
+ * The EPF account a passbook belongs to. One UAN has a separate passbook (member ID) per employer, so the UAN
+ * says nothing about which account it is: match on the member ID, else the employer, never on "the only EPF account".
+ * A passbook that names neither falls back to the only EPF account, if there is exactly one.
+ */
+export function matchEpfAccount(accounts: WealthAccount[], memberId?: string, employer?: string): WealthAccount | undefined {
+  const same = accounts.filter((a) => a.kind === "epf");
+  const tail = (memberId ?? "").replace(/\D/g, "").slice(-4);
+  if (tail.length >= 3) {
+    const byId = same.find((a) => accountTail(a) === tail);
+    if (byId) return byId;
+  }
+  if (norm(employer)) {
+    const byEmployer = same.filter((a) => norm(a.institution) && (norm(a.institution).includes(norm(employer)) || norm(employer).includes(norm(a.institution))));
+    if (byEmployer.length === 1) return byEmployer[0];
+  }
+  return !tail && !norm(employer) && same.length === 1 ? same[0] : undefined;
+}
+
 export const newAccountId = (kind: WealthKind) => `${kind}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
 /** Indian financial year for a date: 2026-05-10 → "2026-27". */

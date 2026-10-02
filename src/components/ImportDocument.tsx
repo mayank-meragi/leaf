@@ -7,8 +7,11 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { ViewProps } from "@/App";
-import { DocumentReader, type DocExtraction } from "@/lib/ai/documents";
-import { applyDocument, knownPasswords, loadDocument, NeedsPasswordError, type DocumentChange } from "@/lib/documents";
+import { StatementReader } from "@/lib/ai/bankStatement";
+import { DocumentReader } from "@/lib/ai/documents";
+import { applyStatement } from "@/lib/bankStatement";
+import { allCategories } from "@/lib/categories";
+import { applyDocument, knownPasswords, loadDocument, NeedsPasswordError } from "@/lib/documents";
 import { loadSettings, resolveGeminiKey } from "@/lib/settings";
 import type { DocKind } from "@/types";
 
@@ -16,7 +19,16 @@ type Step =
   | { kind: "idle" }
   | { kind: "reading"; file: File }
   | { kind: "password"; file: File; wrong?: boolean }
-  | { kind: "review"; file: File; x: DocExtraction; change: DocumentChange; password?: string };
+  | { kind: "review"; file: File; review: Review; password?: string };
+
+/** What the confirmation step shows and saves, whichever reader produced it. */
+interface Review {
+  docKind: DocKind;
+  title: string;
+  summary: string;
+  description: string;
+  files: Record<string, unknown>;
+}
 
 const KIND_LABEL: Record<string, string> = {
   epf_passbook: "EPF passbook",
@@ -28,6 +40,7 @@ const KIND_LABEL: Record<string, string> = {
   payslip: "Payslip",
   form16: "Form 16",
   insurance_policy: "Insurance policy",
+  bank_statement: "Bank statement",
 };
 
 /** "Import document" button + the unlock → read → confirm flow. */
@@ -35,7 +48,7 @@ export interface Opener {
   open: () => void;
 }
 
-export default function ImportDocument({ store, data, reload, label, ref }: ViewProps & { label?: string; ref?: Ref<Opener> }) {
+export default function ImportDocument({ store, data, reload, label, mode = "document", ref }: ViewProps & { label?: string; mode?: "document" | "statement"; ref?: Ref<Opener> }) {
   const [step, setStep] = useState<Step>({ kind: "idle" });
   const [password, setPassword] = useState("");
   const [remember, setRemember] = useState(true);
@@ -50,9 +63,19 @@ export default function ImportDocument({ store, data, reload, label, ref }: View
       const geminiKey = resolveGeminiKey(settings, data.config);
       if (!geminiKey) throw new Error("No Gemini key on this device: add it under Settings → Other devices");
       const { input, password: used } = await loadDocument(file, typed ? [typed] : knownPasswords(data.config));
-      const x = await new DocumentReader(geminiKey, settings.geminiModel || undefined).read(input, file.name);
-      const change = applyDocument(x, data, { kind: "upload", fileName: file.name }, new Date().toISOString().slice(0, 10));
-      setStep({ kind: "review", file, x, change, password: typed ?? used });
+      let review: Review;
+      if (mode === "statement") {
+        const reader = new StatementReader(geminiKey, allCategories(data.config), settings.geminiModel || undefined);
+        const x = await reader.read(input, file.name, (i, n) => n > 1 && toast.info(`Reading ${file.name}: part ${i + 1} of ${n}…`, { id: "statement-progress" }));
+        toast.dismiss("statement-progress");
+        const r = applyStatement(x, data, file.name);
+        review = { docKind: "bank_statement", title: KIND_LABEL.bank_statement, summary: `${x.bank} ${x.accountType === "credit_card" ? "credit card" : "account"} ••${x.accountLast4.slice(-4)}`, description: r.description, files: r.files };
+      } else {
+        const x = await new DocumentReader(geminiKey, settings.geminiModel || undefined).read(input, file.name);
+        const change = applyDocument(x, data, { kind: "upload", fileName: file.name }, new Date().toISOString().slice(0, 10));
+        review = { docKind: x.kind as DocKind, title: KIND_LABEL[x.kind] ?? "Document", summary: x.summary, description: change.description, files: change.files };
+      }
+      setStep({ kind: "review", file, review, password: typed ?? used });
     } catch (e) {
       if (e instanceof NeedsPasswordError) setStep({ kind: "password", file, wrong: !!typed });
       else {
@@ -66,14 +89,14 @@ export default function ImportDocument({ store, data, reload, label, ref }: View
     if (step.kind !== "review") return;
     setSaving(true);
     try {
-      const files = { ...step.change.files };
+      const files = { ...step.review.files };
       // Remember a typed password for this kind of document, so email syncs and future uploads open it.
       if (step.password && remember && !knownPasswords(data.config).includes(step.password)) {
-        files["config.json"] = { ...data.config, passwords: { ...data.config.passwords, [step.x.kind as DocKind]: step.password } };
+        files["config.json"] = { ...data.config, passwords: { ...data.config.passwords, [step.review.docKind]: step.password } };
       }
-      await store.writeJSON(files, `Import ${KIND_LABEL[step.x.kind] ?? "document"}: ${step.file.name}`);
+      await store.writeJSON(files, `Import ${step.review.title.toLowerCase()}: ${step.file.name}`);
       await reload();
-      toast.success(step.change.description);
+      toast.success(step.review.description);
       setStep({ kind: "idle" });
     } catch (e) {
       toast.error("Couldn't save", { description: (e as Error).message });
@@ -92,7 +115,7 @@ export default function ImportDocument({ store, data, reload, label, ref }: View
       <input
         ref={fileRef}
         type="file"
-        accept="application/pdf,image/*,.xlsx,.csv"
+        accept="application/pdf,image/*,.xlsx,.csv,.txt"
         className="hidden"
         onChange={(e) => {
           const f = e.target.files?.[0];
@@ -133,15 +156,15 @@ export default function ImportDocument({ store, data, reload, label, ref }: View
           {step.kind === "review" && (
             <div className="space-y-4">
               <DialogHeader>
-                <DialogTitle>{KIND_LABEL[step.x.kind] ?? "Document"}</DialogTitle>
-                <DialogDescription>{step.x.summary}</DialogDescription>
+                <DialogTitle>{step.review.title}</DialogTitle>
+                <DialogDescription>{step.review.summary}</DialogDescription>
               </DialogHeader>
-              <p className="rounded-md bg-muted px-3 py-2 text-sm">{step.change.description}</p>
+              <p className="rounded-md bg-muted px-3 py-2 text-sm">{step.review.description}</p>
               {step.password && !knownPasswords(data.config).includes(step.password) && (
                 <div className="flex items-center gap-2">
                   <Checkbox id="remember" checked={remember} onCheckedChange={(v) => setRemember(v === true)} />
                   <Label htmlFor="remember" className="text-sm font-normal">
-                    Remember this password for {KIND_LABEL[step.x.kind]?.toLowerCase() ?? "these documents"} (saved in your repo's config)
+                    Remember this password for {step.review.title.toLowerCase()}s (saved in your repo's config)
                   </Label>
                 </div>
               )}

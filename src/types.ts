@@ -235,7 +235,8 @@ export type DocKind =
   | "payslip"
   | "form16"
   | "insurance_policy"
-  | "bank_statement";
+  | "bank_statement"
+  | "stock_holdings";
 
 export interface Payslip {
   month: string; // YYYY-MM
@@ -268,5 +269,30 @@ export interface InsurancePolicy {
   /** When the premium is next due / the policy renews. */
   renewalDate?: ISODate;
   insured?: string;
+  source: DocSource;
+}
+
+// ---- Stocks: a broker's holdings statement ----
+
+export interface StockHolding {
+  name: string;
+  isin?: string;
+  qty: number;
+  avgPrice: number;
+  /** Cost of the shares you hold. */
+  invested: number;
+  /** Closing price on the statement date. */
+  price: number;
+  value: number;
+}
+
+/** What a broker held for you on a date. Statements carry no purchase dates, so there is no XIRR or holding period. */
+export interface StockStatement {
+  asOf: ISODate;
+  /** The `WealthAccount` (kind "stocks") whose balance this statement sets. */
+  account: string;
+  /** Broker's client code, as shown. */
+  client?: string;
+  holdings: StockHolding[];
   source: DocSource;
 }

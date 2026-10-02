@@ -11,6 +11,7 @@ import { StatementReader } from "@/lib/ai/bankStatement";
 import { DocumentReader } from "@/lib/ai/documents";
 import { applyStatement } from "@/lib/bankStatement";
 import { allCategories } from "@/lib/categories";
+import { applyStockStatement, csvRows, parseHoldings } from "@/lib/stocks";
 import { applyDocument, knownPasswords, loadDocument, NeedsPasswordError } from "@/lib/documents";
 import { loadSettings, resolveGeminiKey } from "@/lib/settings";
 import type { DocKind } from "@/types";
@@ -41,6 +42,7 @@ const KIND_LABEL: Record<string, string> = {
   form16: "Form 16",
   insurance_policy: "Insurance policy",
   bank_statement: "Bank statement",
+  stock_holdings: "Stock holdings",
 };
 
 /** "Import document" button + the unlock → read → confirm flow. */
@@ -48,7 +50,7 @@ export interface Opener {
   open: () => void;
 }
 
-export default function ImportDocument({ store, data, reload, label, mode = "document", ref }: ViewProps & { label?: string; mode?: "document" | "statement"; ref?: Ref<Opener> }) {
+export default function ImportDocument({ store, data, reload, label, mode = "document", ref }: ViewProps & { label?: string; mode?: "document" | "statement" | "holdings"; ref?: Ref<Opener> }) {
   const [step, setStep] = useState<Step>({ kind: "idle" });
   const [password, setPassword] = useState("");
   const [remember, setRemember] = useState(true);
@@ -62,8 +64,18 @@ export default function ImportDocument({ store, data, reload, label, mode = "doc
       const settings = loadSettings()!;
       const geminiKey = resolveGeminiKey(settings, data.config);
       if (!geminiKey) throw new Error("No Gemini key on this device: add it under Settings → Other devices");
-      const { input, password: used } = await loadDocument(file, typed ? [typed] : knownPasswords(data.config));
       let review: Review;
+      if (mode === "holdings") {
+        // A broker's holdings file is a plain table: read it directly, no model involved.
+        const sheets = /\.xlsx$/i.test(file.name)
+          ? await (await import("@/lib/parsers/cas/mfcentral")).readWorkbook(file)
+          : [{ rows: csvRows(await file.text()) }];
+        const parsed = parseHoldings(sheets);
+        const r = applyStockStatement(parsed, data, file.name, new Date().toISOString().slice(0, 10));
+        setStep({ kind: "review", file, review: { docKind: "stock_holdings", title: KIND_LABEL.stock_holdings, summary: `${parsed.holdings.length} stocks${parsed.client ? ` · client ${parsed.client}` : ""}`, description: r.description, files: r.files } });
+        return;
+      }
+      const { input, password: used } = await loadDocument(file, typed ? [typed] : knownPasswords(data.config));
       if (mode === "statement") {
         const reader = new StatementReader(geminiKey, allCategories(data.config), settings.geminiModel || undefined);
         const x = await reader.read(input, file.name, (i, n) => n > 1 && toast.info(`Reading ${file.name}: part ${i + 1} of ${n}…`, { id: "statement-progress" }));
@@ -115,7 +127,7 @@ export default function ImportDocument({ store, data, reload, label, mode = "doc
       <input
         ref={fileRef}
         type="file"
-        accept="application/pdf,image/*,.xlsx,.csv,.txt"
+        accept={mode === "holdings" ? ".xlsx,.csv" : "application/pdf,image/*,.xlsx,.csv,.txt"}
         className="hidden"
         onChange={(e) => {
           const f = e.target.files?.[0];

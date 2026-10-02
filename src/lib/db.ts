@@ -10,6 +10,7 @@
 //   income/payslips.json        Payslip[]
 //   tax/documents.json          TaxDocument[] (Form 16, …)
 //   insurance/policies.json     InsurancePolicy[]
+//   stocks/statements.json      StockStatement[] (broker holdings statements)
 
 import type {
   CardPayment,
@@ -18,6 +19,7 @@ import type {
   InsurancePolicy,
   LeafConfig,
   Payslip,
+  StockStatement,
   TaxDocument,
   Transaction,
   WealthAccount,
@@ -42,6 +44,7 @@ export interface LeafData {
   payslips: Payslip[];
   taxDocs: TaxDocument[];
   policies: InsurancePolicy[];
+  stockStatements: StockStatement[];
 }
 
 export const PATHS = {
@@ -53,6 +56,7 @@ export const PATHS = {
   policies: "insurance/policies.json",
 } as const;
 
+export const STOCKS_PATH = "stocks/statements.json";
 export const CARD_STATEMENTS_PATH = "cards/statements.json";
 export const CARD_PAYMENTS_PATH = "cards/payments.json";
 
@@ -61,7 +65,7 @@ export function storeFor(s: Settings) {
 }
 
 export async function loadAll(store: GitHubStore): Promise<LeafData> {
-  const [config, txnFiles, mfFiles, cardStatements, cardPayments, wealthAccounts, wealthSnapshots, wealthFlows, payslips, taxDocs, policies] = await Promise.all([
+  const [config, txnFiles, mfFiles, cardStatements, cardPayments, wealthAccounts, wealthSnapshots, wealthFlows, payslips, taxDocs, policies, stockStatements] = await Promise.all([
     store.readJSON<LeafConfig>("config.json"),
     store.list("transactions"),
     store.list("mf"),
@@ -73,6 +77,7 @@ export async function loadAll(store: GitHubStore): Promise<LeafData> {
     store.readJSON<Payslip[]>(PATHS.payslips),
     store.readJSON<TaxDocument[]>(PATHS.taxDocs),
     store.readJSON<InsurancePolicy[]>(PATHS.policies),
+    store.readJSON<StockStatement[]>(STOCKS_PATH),
   ]);
   const [txns, statements] = await Promise.all([
     Promise.all(txnFiles.filter((f) => f.endsWith(".json")).map((f) => store.readJSON<Transaction[]>(`transactions/${f}`))),
@@ -90,6 +95,7 @@ export async function loadAll(store: GitHubStore): Promise<LeafData> {
     payslips: payslips ?? [],
     taxDocs: taxDocs ?? [],
     policies: policies ?? [],
+    stockStatements: stockStatements ?? [],
   };
 }
 

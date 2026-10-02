@@ -14,7 +14,7 @@ import type { WealthAccount } from "@/types";
 import AccountEditor, { wealthFiles } from "./AccountEditor";
 import SectionCard from "./SectionCard";
 
-export default function NetWorth({ onOpenFunds, onOpenEpf, ...props }: ViewProps & { onOpenFunds: () => void; onOpenEpf: () => void }) {
+export default function NetWorth({ onOpenFunds, onOpenEpf, onOpenStocks, ...props }: ViewProps & { onOpenFunds: () => void; onOpenEpf: () => void; onOpenStocks: () => void }) {
   const { store, data, reload } = props;
   const today = new Date().toISOString().slice(0, 10);
   const [editing, setEditing] = useState<{ account: WealthAccount; isNew: boolean } | null>(null);
@@ -96,13 +96,13 @@ export default function NetWorth({ onOpenFunds, onOpenEpf, ...props }: ViewProps
         </Button>
       </div>
 
-      <Lines title="Assets" lines={nw.assets} today={today} editable={accountById} onEdit={(a) => setEditing({ account: a, isNew: false })} openers={{ mf: onOpenFunds, epf: onOpenEpf }} />
+      <Lines title="Assets" lines={nw.assets} today={today} editable={accountById} onEdit={(a) => setEditing({ account: a, isNew: false })} openers={{ mf: onOpenFunds, epf: onOpenEpf, stocks: onOpenStocks }} />
       {nw.missingBalances.length > 0 && (
         <p className="px-1 text-xs text-muted-foreground">
           No balance in alerts yet for {nw.missingBalances.join(", ")}. They'll appear once an alert includes one (after the next Sync).
         </p>
       )}
-      <Lines title="Liabilities" lines={nw.liabilities} today={today} editable={accountById} onEdit={(a) => setEditing({ account: a, isNew: false })} openers={{ mf: onOpenFunds, epf: onOpenEpf }} />
+      <Lines title="Liabilities" lines={nw.liabilities} today={today} editable={accountById} onEdit={(a) => setEditing({ account: a, isNew: false })} openers={{ mf: onOpenFunds, epf: onOpenEpf, stocks: onOpenStocks }} />
 
       <Protection policies={data.policies} today={today} />
 

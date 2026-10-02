@@ -12,7 +12,7 @@ const data: LeafData = {
   ],
   statements: [], cardStatements: [], cardPayments: [],
   wealthAccounts: [{ id: "nps-1", kind: "nps", name: "NPS", ref: "PRAN ••9999" }],
-  wealthSnapshots: [], wealthFlows: [], payslips: [],
+  wealthSnapshots: [], wealthFlows: [], stockStatements: [], payslips: [],
   taxDocs: [],
   policies: [{ insurer: "Acme", type: "health", policyRef: "POL123", insured: "Jane Doe", source: { kind: "manual" } }],
 };

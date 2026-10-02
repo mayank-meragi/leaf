@@ -6,7 +6,7 @@ import { EMPTY_CONFIG, type LeafData } from "./db";
 import { sourceStatus } from "./instruments";
 
 const data = (transactions: Transaction[] = []): LeafData =>
-  ({ config: EMPTY_CONFIG, transactions, statements: [], cardStatements: [], cardPayments: [], wealthAccounts: [], wealthSnapshots: [], wealthFlows: [], payslips: [], taxDocs: [], policies: [] }) as LeafData;
+  ({ config: EMPTY_CONFIG, transactions, statements: [], cardStatements: [], cardPayments: [], wealthAccounts: [], wealthSnapshots: [], wealthFlows: [], payslips: [], taxDocs: [], policies: [], stockStatements: [] }) as LeafData;
 
 const row = (date: string, amount: number, direction: "debit" | "credit", balance: number, description = "X") => ({
   date, amount, direction, description, hasBalance: true, balance, category: "Other",

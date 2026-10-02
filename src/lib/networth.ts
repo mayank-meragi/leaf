@@ -16,7 +16,11 @@ export function computeNetWorth(data: LeafData, today: string) {
   const epfLine: NetWorthLine[] = epf.accounts.length
     ? [{ key: "epf", label: "EPF", group: "EPF", value: epf.total, asOf: epf.asOf, stale: epf.stale, note: epf.accounts.length > 1 ? `${epf.accounts.length} employers` : undefined }]
     : [];
-  const otherAssets = wealth.assets.filter((l) => l.group !== WEALTH_KINDS.epf.label);
+  // The stocks account a holdings statement feeds is the Stocks page's line.
+  const stocksAccount = [...data.stockStatements].sort((a, b) => b.asOf.localeCompare(a.asOf))[0]?.account;
+  const otherAssets = wealth.assets
+    .filter((l) => l.group !== WEALTH_KINDS.epf.label)
+    .map((l) => (l.key === stocksAccount ? { ...l, key: "stocks", label: "Stocks", note: "from holdings statement" } : l));
 
   const banks: NetWorthLine[] = sources
     .filter((s) => s.kind === "bank_account")

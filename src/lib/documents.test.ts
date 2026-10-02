@@ -8,7 +8,7 @@ import type { WealthAccount } from "@/types";
 const empty: LeafData = {
   config: { version: 1, accounts: [] },
   transactions: [], statements: [], cardStatements: [], cardPayments: [],
-  wealthAccounts: [], wealthSnapshots: [], wealthFlows: [], payslips: [], taxDocs: [], policies: [],
+  wealthAccounts: [], wealthSnapshots: [], wealthFlows: [], payslips: [], taxDocs: [], policies: [], stockStatements: [],
 };
 const blank: DocExtraction = {
   kind: "other", institution: "", reference: "", asOfDate: "", balance: 0, payMonth: "", gross: 0, net: 0, tds: 0,

@@ -20,7 +20,10 @@ import { compareBenchmark, valueHistory } from "@/lib/performance";
 import { assetClassOf, latestStatements, schemeKey } from "@/lib/portfolio";
 import { cn } from "@/lib/utils";
 import LineChart from "./LineChart";
+import InfoTip from "./InfoTip";
+import Risk from "./Risk";
 import SectionCard from "./SectionCard";
+import type { MetricId } from "@/lib/metricInfo";
 
 const DAY = 86_400_000;
 
@@ -200,9 +203,10 @@ export default function Performance({ store, data, setData }: Pick<ViewProps, "s
           {compared ? (
             <>
               <div className="grid gap-3 sm:grid-cols-3">
-                <Tile label="Your XIRR" value={compared.mine == null ? "—" : pct(compared.mine).replace("+", "")} sub={`${money(compared.mineValue)} today`} />
+                <Tile info="xirr" label="Your XIRR" value={compared.mine == null ? "—" : pct(compared.mine).replace("+", "")} sub={`${money(compared.mineValue)} today`} />
                 <Tile label={`If in ${BENCHMARKS.find((b) => b.code === benchmarkCode)?.label ?? "the index"}`} value={compared.bench == null ? "—" : pct(compared.bench).replace("+", "")} sub={`${money(compared.benchValue)} today`} />
                 <Tile
+                  info="benchmarkXirr"
                   label="Difference"
                   value={compared.mine != null && compared.bench != null ? `${((compared.mine - compared.bench) * 100).toFixed(1)} pts` : "—"}
                   sub={compared.mine != null && compared.bench != null ? `${money(compared.mineValue - compared.benchValue)} ${compared.mineValue >= compared.benchValue ? "ahead" : "behind"}` : undefined}
@@ -235,14 +239,23 @@ export default function Performance({ store, data, setData }: Pick<ViewProps, "s
           )}
         </div>
       </SectionCard>
+      {cache && bench && asOf && (
+        <Risk
+          groups={equityOnly ? groups.filter((g) => assetClassOf(g.name, g.reported) === "Equity") : groups}
+          navOf={navOf}
+          bench={bench}
+          benchLabel={BENCHMARKS.find((b) => b.code === benchmarkCode)?.label ?? "the index"}
+          asOf={asOf}
+        />
+      )}
     </div>
   );
 }
 
-function Tile({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone?: number }) {
+function Tile({ label, value, sub, tone, info }: { label: string; value: string; sub?: string; tone?: number; info?: MetricId }) {
   return (
     <div className="rounded-lg border px-4 py-3">
-      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="flex items-center gap-1 text-xs text-muted-foreground">{label}{info && <InfoTip id={info} />}</div>
       <div className={cn("text-xl font-semibold tabular-nums", tone != null && (tone >= 0 ? "text-positive" : "text-destructive"))}>{value}</div>
       {sub && <div className="mt-0.5 text-xs text-muted-foreground">{sub}</div>}
     </div>

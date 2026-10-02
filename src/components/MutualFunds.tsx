@@ -17,6 +17,10 @@ import LookThrough from "./LookThrough";
 import PlanMix from "./PlanMix";
 import Performance from "./Performance";
 import Rebalance from "./Rebalance";
+import Dividends from "./Dividends";
+import InfoTip from "./InfoTip";
+import type { MetricId } from "@/lib/metricInfo";
+import { stocksOverview } from "@/lib/stocks";
 
 export type FundSection = "holdings" | "performance" | "insights" | "plan";
 
@@ -24,6 +28,7 @@ export default function MutualFunds({ store, data, setData, section }: ViewProps
   const summary = useMemo(() => summarize(data.statements), [data.statements]);
   const cg = useMemo(() => capitalGains(data.statements), [data.statements]);
   const pnl = useMemo(() => computePnL(data.statements, cg), [data.statements, cg]);
+  const stocksValue = useMemo(() => stocksOverview(data.stockStatements, new Date().toISOString().slice(0, 10))?.value ?? 0, [data.stockStatements]);
   const sipPlans = useMemo(() => sips(data.statements).plans, [data.statements]);
   const [selected, setSelected] = useState<string | null>(null);
   const detail = summary.schemes.find((x) => x.name === selected) ?? null;
@@ -45,6 +50,7 @@ export default function MutualFunds({ store, data, setData, section }: ViewProps
               tone={summary.value >= summary.cost ? "positive" : "negative"}
             />
             <Stat
+              info="xirr"
               label="XIRR"
               value={summary.xirr == null ? "—" : pct(summary.xirr).replace("+", "")}
               sub={
@@ -141,13 +147,14 @@ export default function MutualFunds({ store, data, setData, section }: ViewProps
             />
             <Stat label="Dividends" value={money(pnl.dividends)} sub="Paid out or reinvested" />
           </div>
+              <Dividends statements={data.statements} />
               <Performance store={store} data={data} setData={setData} />
             </div>
           )}
 
           {section === "plan" && (
             <div className="space-y-4">
-              <Rebalance store={store} data={data} setData={setData} schemes={summary.schemes} />
+              <Rebalance store={store} data={data} setData={setData} schemes={summary.schemes} stocksValue={stocksValue} />
               <Goals store={store} data={data} setData={setData} schemes={summary.schemes} />
             </div>
           )}
@@ -185,10 +192,10 @@ export default function MutualFunds({ store, data, setData, section }: ViewProps
   );
 }
 
-function Stat({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone?: "positive" | "negative" }) {
+function Stat({ label, value, sub, tone, info }: { label: string; value: string; sub?: string; tone?: "positive" | "negative"; info?: MetricId }) {
   return (
     <Card className="gap-1 px-4">
-      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="flex items-center gap-1 text-xs text-muted-foreground">{label}{info && <InfoTip id={info} />}</div>
       <div className={cn("text-2xl font-semibold tabular-nums tracking-tight", tone === "positive" && "text-positive", tone === "negative" && "text-destructive")}>
         {value}
       </div>

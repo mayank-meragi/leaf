@@ -12,11 +12,12 @@ import SectionCard from "./SectionCard";
 
 const BAND = 5; // percentage points of drift worth acting on
 
-export default function Rebalance({ store, data, setData, schemes }: Pick<ViewProps, "store" | "data" | "setData"> & { schemes: SchemeSummary[] }) {
+export default function Rebalance({ store, data, setData, schemes, stocksValue = 0 }: Pick<ViewProps, "store" | "data" | "setData"> & { schemes: SchemeSummary[]; stocksValue?: number }) {
   const saved = (data.config.rebalanceTargets ?? {}) as Targets;
   const [draft, setDraft] = useState<Record<string, string>>(() => Object.fromEntries(ASSET_CLASSES.map((c) => [c, saved[c] != null ? String(saved[c]) : ""])));
   const [newMoney, setNewMoney] = useState("");
   const [busy, setBusy] = useState(false);
+  const [withStocks, setWithStocks] = useState(true);
 
   const targets: Targets = useMemo(() => {
     const t: Targets = {};
@@ -29,7 +30,7 @@ export default function Rebalance({ store, data, setData, schemes }: Pick<ViewPr
   const total = targetTotal(targets);
   const valid = Math.abs(total - 100) < 0.01;
   const dirty = JSON.stringify(targets) !== JSON.stringify(saved);
-  const rows = useMemo(() => rebalance(schemes, valid ? targets : {}, Number(newMoney) > 0 ? Number(newMoney) : 0), [schemes, targets, valid, newMoney]);
+  const rows = useMemo(() => rebalance(schemes, valid ? targets : {}, Number(newMoney) > 0 ? Number(newMoney) : 0, withStocks ? { Equity: stocksValue } : {}), [schemes, targets, valid, newMoney, withStocks, stocksValue]);
 
   const save = async () => {
     setBusy(true);
@@ -49,7 +50,16 @@ export default function Rebalance({ store, data, setData, schemes }: Pick<ViewPr
   const out = rows.filter((r) => active && Math.abs(r.drift) >= BAND);
 
   return (
-    <SectionCard title="Rebalancing" description="Set the mix you want. Leaf shows how far you've drifted and where new money should go." bodyClassName="space-y-4">
+    <SectionCard title="Rebalancing" description="Set the mix you want. Leaf shows how far you've drifted and where new money should go." bodyClassName="space-y-4"
+      action={
+        stocksValue > 0 ? (
+          <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+            <input type="checkbox" checked={withStocks} onChange={(e) => setWithStocks(e.target.checked)} />
+            Count stocks ({money(stocksValue)}) as equity
+          </label>
+        ) : undefined
+      }
+    >
       <Table>
         <TableHeader>
           <TableRow>

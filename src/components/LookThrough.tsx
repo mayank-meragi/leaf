@@ -7,11 +7,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import type { ViewProps } from "@/App";
 import { day, money } from "@/lib/format";
 import { fetchViaHelper, helperUp, HELPER_COMMAND, planSync, serializeHoldings, settle, type SyncTarget } from "@/lib/helper";
-import { costs, holdingsPath, loadHoldings, lookThrough, monthsOld, overlaps, type FundHoldings, type FundInput, type PairOverlap } from "@/lib/holdings";
+import { costs, holdingsPath, loadHoldings, lookThrough, monthsOld, overlapMatrix, overlaps, type FundHoldings, type FundInput, type OverlapMatrix, type PairOverlap } from "@/lib/holdings";
 import { CODES_PATH, type CodeMap } from "@/lib/nav";
 import { schemeKey, type SchemeSummary } from "@/lib/portfolio";
 import { cn } from "@/lib/utils";
+import InfoTip from "./InfoTip";
 import SectionCard from "./SectionCard";
+import type { MetricId } from "@/lib/metricInfo";
 
 const STALE_MONTHS = 2;
 
@@ -163,6 +165,7 @@ function Ready({ funds, total, missing }: { funds: FundInput[]; total: number; m
   const look = useMemo(() => lookThrough(funds, total), [funds, total]);
   const cost = useMemo(() => costs(funds, total), [funds, total]);
   const pairs = useMemo(() => overlaps(funds), [funds]);
+  const matrix = useMemo(() => overlapMatrix(funds), [funds]);
   const dates = funds.map((f) => f.fund.portfolioDate).filter((d): d is string => !!d).sort();
   const oldest = dates[0];
   const stale = oldest != null && monthsOld(oldest) > STALE_MONTHS;
@@ -182,8 +185,14 @@ function Ready({ funds, total, missing }: { funds: FundInput[]; total: number; m
       )}
 
       <SectionCard title="What you really own" description="Each fund's stocks, scaled by how much you hold in it and added up across funds." bodyClassName="space-y-4">
-        <div className="grid gap-3 sm:grid-cols-3">
-          <Tile label="Top 10 stocks" value={`${(look.top10Share * 100).toFixed(1)}%`} sub="of your whole portfolio" />
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <Tile info="concentration" label="Top 10 stocks" value={`${(look.top10Share * 100).toFixed(1)}%`} sub="of your whole portfolio" />
+          <Tile
+            info="effectiveStocks"
+            label="Effective stocks"
+            value={look.effectiveStocks == null ? "—" : look.effectiveStocks.toFixed(0)}
+            sub={`of ${look.stocks.length} unique · ${look.positions} positions`}
+          />
           <Tile label="In listed stocks" value={money(look.equityAmount)} sub={`${look.stocks.length} different stocks`} />
           <Tile label="Funds covered" value={`${(look.coverage * 100).toFixed(0)}%`} sub="of portfolio value" />
         </div>
@@ -232,11 +241,11 @@ function Ready({ funds, total, missing }: { funds: FundInput[]; total: number; m
         </div>
       </SectionCard>
 
-      <Overlap pairs={pairs} />
+      <Overlap pairs={pairs} matrix={matrix} />
 
       <SectionCard title="Fund costs" description="Expense ratios are deducted from the NAV every day, so you never see a bill." bodyClassName="space-y-4">
         <div className="grid gap-3 sm:grid-cols-3">
-          <Tile label="Weighted expense ratio" value={cost.weighted == null ? "—" : `${cost.weighted.toFixed(2)}%`} sub="a year, by value" />
+          <Tile info="expenseRatio" label="Weighted expense ratio" value={cost.weighted == null ? "—" : `${cost.weighted.toFixed(2)}%`} sub="a year, by value" />
           <Tile label="Cost a year" value={money(cost.annual)} sub="on funds with a known ratio" />
           <Tile label="Covered" value={`${(cost.coverage * 100).toFixed(0)}%`} sub="of portfolio value" />
         </div>
@@ -269,14 +278,25 @@ function Ready({ funds, total, missing }: { funds: FundInput[]; total: number; m
   );
 }
 
-function Overlap({ pairs }: { pairs: PairOverlap[] }) {
+function Overlap({ pairs, matrix }: { pairs: PairOverlap[]; matrix: OverlapMatrix }) {
   const [all, setAll] = useState(false);
   const [open, setOpen] = useState<string | null>(null);
   const shown = all ? pairs : pairs.slice(0, 8);
-  const level = (o: number) => (o >= 50 ? "text-destructive" : o >= 30 ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground");
+  const level = (o: number) => (o >= 50 ? "text-destructive" : o >= 35 ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground");
 
   return (
-    <SectionCard title="Fund overlap" description="How much of one fund is the same stocks as another. High overlap means you're paying two fees for one portfolio." bodyClassName="space-y-2">
+    <SectionCard title="Fund overlap" info={<InfoTip id="overlap" />} description="How much of one fund is the same stocks as another. High overlap means you're paying two fees for one portfolio." bodyClassName="space-y-3">
+      {matrix.weighted != null && (
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Tile info="portfolioOverlap" label="Portfolio overlap" value={`${matrix.weighted.toFixed(0)}%`} sub="average across fund pairs, by amount held" />
+          <Tile
+            label="Most overlapping pair"
+            value={matrix.top ? `${matrix.top.overlap.toFixed(0)}%` : "—"}
+            sub={matrix.top ? `${matrix.top.a} · ${matrix.top.b}` : "No two funds share a stock"}
+          />
+        </div>
+      )}
+      {matrix.names.length >= 2 && matrix.names.length <= 12 && <Matrix matrix={matrix} />}
       {pairs.length === 0 && <p className="text-sm text-muted-foreground">No two of your equity funds share a stock, or you hold only one.</p>}
       {shown.map((p) => {
         const key = `${p.a}|${p.b}`;
@@ -328,10 +348,46 @@ function Overlap({ pairs }: { pairs: PairOverlap[] }) {
   );
 }
 
-function Tile({ label, value, sub }: { label: string; value: string; sub?: string }) {
+function Matrix({ matrix }: { matrix: OverlapMatrix }) {
+  const short = (n: string) => (n.length > 22 ? `${n.slice(0, 21)}…` : n);
+  const shade = (o: number) => (o >= 50 ? "bg-destructive/15 font-semibold text-destructive" : o >= 35 ? "bg-amber-500/15 font-medium text-amber-700 dark:text-amber-400" : "text-muted-foreground");
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-xs">
+        <thead>
+          <tr>
+            <th />
+            {matrix.names.map((n, j) => (
+              <th key={n} className="max-w-24 px-2 py-1 text-right font-normal text-muted-foreground" title={n}>
+                {j + 1}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {matrix.names.map((n, i) => (
+            <tr key={n} className="border-t">
+              <th className="whitespace-nowrap py-1.5 pr-3 text-left font-normal" title={n}>
+                <span className="mr-1.5 text-muted-foreground">{i + 1}</span>
+                {short(n)}
+              </th>
+              {matrix.cells[i].map((o, j) => (
+                <td key={j} className={cn("px-2 py-1.5 text-right tabular-nums", i === j ? "text-muted-foreground/40" : shade(o))}>
+                  {i === j ? "—" : `${o.toFixed(0)}%`}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function Tile({ label, value, sub, info }: { label: string; value: string; sub?: string; info?: MetricId }) {
   return (
     <div className="rounded-lg border px-4 py-3">
-      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="flex items-center gap-1 text-xs text-muted-foreground">{label}{info && <InfoTip id={info} />}</div>
       <div className="text-xl font-semibold tabular-nums">{value}</div>
       {sub && <div className="mt-0.5 text-xs text-muted-foreground">{sub}</div>}
     </div>

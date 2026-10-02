@@ -18,8 +18,13 @@ export interface RebalanceRow {
 
 export const targetTotal = (t: Targets) => ASSET_CLASSES.reduce((s, c) => s + (t[c] ?? 0), 0);
 
-export function rebalance(schemes: SchemeSummary[], targets: Targets, newMoney = 0): RebalanceRow[] {
+/** `extra` adds holdings that aren't mutual funds (e.g. directly held stocks) to their asset class. */
+export function rebalance(schemes: SchemeSummary[], targets: Targets, newMoney = 0, extra: Partial<Record<AssetClass, number>> = {}): RebalanceRow[] {
   const slices = new Map(breakdown(schemes, (s) => s.assetClass).map((s) => [s.key, s]));
+  for (const c of ASSET_CLASSES) {
+    const v = extra[c] ?? 0;
+    if (v > 0) slices.set(c, { key: c, value: (slices.get(c)?.value ?? 0) + v, share: 0 });
+  }
   const total = [...slices.values()].reduce((s, x) => s + x.value, 0);
   const classes = ASSET_CLASSES.filter((c) => slices.has(c) || (targets[c] ?? 0) > 0);
   const t = (c: AssetClass) => (targets[c] ?? 0) / 100;

@@ -89,6 +89,33 @@ export function overlaps(funds: FundInput[]): PairOverlap[] {
   return out.sort((x, y) => y.overlap - x.overlap);
 }
 
+export interface OverlapMatrix {
+  names: string[];
+  /** Weighted overlap in percent between each pair of funds; the diagonal is 100. */
+  cells: number[][];
+  /** Allocation-weighted average over all pairs: big positions count more. Null with fewer than two equity funds. */
+  weighted: number | null;
+  /** The most overlapping pair, if any two funds share a stock. */
+  top: PairOverlap | null;
+}
+
+/** Overlap between every pair of equity funds, and one number for the whole portfolio. */
+export function overlapMatrix(funds: FundInput[]): OverlapMatrix {
+  const eq = funds.filter((f) => equityOf(f.fund).length > 0);
+  const cells = eq.map(() => eq.map(() => 100));
+  let num = 0;
+  let den = 0;
+  for (let i = 0; i < eq.length; i++)
+    for (let j = i + 1; j < eq.length; j++) {
+      const { overlap } = pairOverlap(eq[i].fund, eq[j].fund);
+      cells[i][j] = cells[j][i] = overlap;
+      const w = eq[i].value * eq[j].value;
+      num += w * overlap;
+      den += w;
+    }
+  return { names: eq.map((f) => f.name), cells, weighted: den > 0 ? num / den : null, top: overlaps(eq)[0] ?? null };
+}
+
 // ---- Look-through: what you own underneath the funds ----
 
 export interface StockExposure {
@@ -111,15 +138,21 @@ export interface LookThrough {
   top10Share: number;
   /** Value held in funds whose portfolio is known, over total value. */
   coverage: number;
+  /** Equity positions summed over funds, counting a stock once per fund that holds it. */
+  positions: number;
+  /** How many equally sized stocks would be as concentrated as this: 1 / Σ(weight²). Null with no equity. */
+  effectiveStocks: number | null;
 }
 
 export function lookThrough(funds: FundInput[], total: number): LookThrough {
   const stocks = new Map<string, StockExposure>();
   const sectors = new Map<string, number>();
   let covered = 0;
+  let positions = 0;
   for (const { name, value, fund } of funds) {
     covered += value;
     for (const h of equityOf(fund)) {
+      positions++;
       const amount = (value * h.weight) / 100;
       const s = stocks.get(h.id) ?? { id: h.id, name: h.name, sector: h.sector, amount: 0, share: 0, funds: [] };
       s.amount += amount;
@@ -138,6 +171,8 @@ export function lookThrough(funds: FundInput[], total: number): LookThrough {
     equityAmount,
     top10Share: list.slice(0, 10).reduce((s, x) => s + x.amount, 0) / div,
     coverage: total ? covered / total : 0,
+    positions,
+    effectiveStocks: equityAmount > 0 ? 1 / list.reduce((s, x) => s + (x.amount / equityAmount) ** 2, 0) : null,
   };
 }
 

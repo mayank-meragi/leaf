@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Goal, MFTransaction, MFTxnType } from "@/types";
 import type { SchemeGroup } from "./capitalGains";
 import { futureValue, monthsUntil, projectGoal, requiredMonthly } from "./goals";
-import { costs, lookThrough, monthsOld, overlaps, pairOverlap, type FundHoldings, type FundInput } from "./holdings";
+import { costs, lookThrough, monthsOld, overlapMatrix, overlaps, pairOverlap, type FundHoldings, type FundInput } from "./holdings";
 import { navOn, parseSeries, queryVariants, resolveScheme, type NavApi, type NavSeries } from "./nav";
 import { compareBenchmark, hasFullHistory, monthEnds, openingUnits, valueHistory } from "./performance";
 import { planMix, planTypeOf } from "./planType";
@@ -217,6 +217,43 @@ describe("fund overlap", () => {
     const ranked = overlaps([{ name: "A", value: 1, fund: a }, { name: "B", value: 1, fund: b }, { name: "D", value: 1, fund: debt }, { name: "C", value: 1, fund: c }]);
     expect(ranked).toHaveLength(1);
     expect(ranked[0]).toMatchObject({ a: "A", b: "B", overlap: 10 });
+  });
+});
+
+describe("overlap matrix", () => {
+  const a = fund(1, [["hdfc", 10], ["infy", 4]]);
+  const b = fund(2, [["hdfc", 6], ["infy", 8]]);
+  const c = fund(3, [["zzz", 50]]);
+  it("weights each pair's overlap by the money in both funds", () => {
+    const m = overlapMatrix([{ name: "A", value: 100, fund: a }, { name: "B", value: 100, fund: b }, { name: "C", value: 10, fund: c }]);
+    expect(m.cells[0][1]).toBe(10); // hdfc 6 + infy 4
+    expect(m.cells[1][0]).toBe(10);
+    expect(m.cells[0][2]).toBe(0);
+    expect(m.cells[0][0]).toBe(100);
+    // pairs: A-B (100*100, 10%), A-C (100*10, 0%), B-C (100*10, 0%)
+    expect(m.weighted).toBeCloseTo((10_000 * 10) / 12_000, 6);
+    expect(m.top).toMatchObject({ a: "A", b: "B", overlap: 10 });
+  });
+  it("has no portfolio figure with a single equity fund", () => {
+    const m = overlapMatrix([{ name: "A", value: 100, fund: a }]);
+    expect(m.weighted).toBeNull();
+    expect(m.top).toBeNull();
+  });
+});
+
+describe("effective stocks", () => {
+  it("is the stock count when holdings are equal, and lower when one dominates", () => {
+    const even = lookThrough([{ name: "A", value: 100, fund: fund(1, [["a", 10], ["b", 10], ["c", 10], ["d", 10]]) }], 100);
+    expect(even.effectiveStocks).toBeCloseTo(4);
+    expect(even.positions).toBe(4);
+    const skew = lookThrough([{ name: "A", value: 100, fund: fund(1, [["a", 70], ["b", 10], ["c", 10], ["d", 10]]) }], 100);
+    expect(skew.effectiveStocks!).toBeLessThan(2);
+  });
+  it("counts a stock held in two funds as one stock but two positions", () => {
+    const t = lookThrough([{ name: "A", value: 100, fund: fund(1, [["a", 50]]) }, { name: "B", value: 100, fund: fund(2, [["a", 50]]) }], 200);
+    expect(t.positions).toBe(2);
+    expect(t.stocks).toHaveLength(1);
+    expect(t.effectiveStocks).toBeCloseTo(1);
   });
 });
 

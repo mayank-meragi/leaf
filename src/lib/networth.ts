@@ -1,9 +1,15 @@
 import type { LeafData } from "./db";
 import { day } from "./format";
-import { cardRecords, instruments, sourceStatus } from "./instruments";
+import { cardRecords, instruments, sourceStatus, type SourceStatus } from "./instruments";
 import { summarize } from "./portfolio";
 import { epfOverview } from "./epf";
 import { netWorth, WEALTH_KINDS, wealthLines, type NetWorthLine } from "./wealth";
+
+/** What a card owes: its unpaid bill plus spends since the statement. */
+export function cardDue(st: SourceStatus): { amount: number; billDue: number } {
+  const billDue = st.bill && st.bill.state !== "paid" ? Math.max(0, st.bill.totalDue - st.bill.paid) : 0;
+  return { amount: billDue + Math.max(0, st.unbilled?.amount ?? 0), billDue };
+}
 
 /** Everything Leaf knows, as net worth lines: mutual funds, bank balances from alerts, card dues, and tracked accounts. */
 export function computeNetWorth(data: LeafData, today: string) {
@@ -33,8 +39,7 @@ export function computeNetWorth(data: LeafData, today: string) {
     .filter((s) => s.kind === "credit_card" || s.kind === "card")
     .flatMap((s) => {
       const st = status(s.key);
-      const billDue = st.bill && st.bill.state !== "paid" ? Math.max(0, st.bill.totalDue - st.bill.paid) : 0;
-      const due = billDue + Math.max(0, st.unbilled?.amount ?? 0);
+      const { amount: due, billDue } = cardDue(st);
       return due > 0 ? [{ key: s.key, label: s.label, group: "Credit cards", value: due, asOf: today, note: billDue ? "unpaid bill + unbilled" : "unbilled" }] : [];
     });
   const mfLine: NetWorthLine[] = mf.value ? [{ key: "mf", label: "Mutual funds", group: "Mutual funds", value: mf.value, asOf: mf.asOf, note: "from CAS" }] : [];

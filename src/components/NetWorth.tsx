@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { duplicateGroups, mergeAccounts, newAccountId, pickSurvivor, type NetWorthLine } from "@/lib/wealth";
 import type { WealthAccount } from "@/types";
 import AccountEditor, { wealthFiles } from "./AccountEditor";
+import NetWorthHistory from "./NetWorthHistory";
 import SectionCard from "./SectionCard";
 
 export default function NetWorth({ onOpenFunds, onOpenEpf, onOpenStocks, ...props }: ViewProps & { onOpenFunds: () => void; onOpenEpf: () => void; onOpenStocks: () => void }) {
@@ -89,6 +90,8 @@ export default function NetWorth({ onOpenFunds, onOpenEpf, onOpenStocks, ...prop
             </ul>
           </SectionCard>
         )}
+
+      <NetWorthHistory store={store} data={data} />
 
       <div className="flex justify-end">
         <Button variant="outline" onClick={() => setEditing({ account: { id: newAccountId("epf"), kind: "epf", name: "" }, isNew: true })}>

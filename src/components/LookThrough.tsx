@@ -7,7 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import type { ViewProps } from "@/App";
 import { day, money } from "@/lib/format";
 import { fetchViaHelper, helperUp, HELPER_COMMAND, planSync, serializeHoldings, settle, type SyncTarget } from "@/lib/helper";
-import { costs, holdingsPath, loadHoldings, lookThrough, monthsOld, overlapMatrix, overlaps, type FundHoldings, type FundInput, type OverlapMatrix, type PairOverlap } from "@/lib/holdings";
+import { costs, focusMatrix, holdingsPath, loadHoldings, lookThrough, monthsOld, overlapMatrix, overlaps, type FundHoldings, type FundInput, type OverlapMatrix, type PairOverlap } from "@/lib/holdings";
 import { CODES_PATH, type CodeMap } from "@/lib/nav";
 import { schemeKey, type SchemeSummary } from "@/lib/portfolio";
 import { cn } from "@/lib/utils";
@@ -278,10 +278,14 @@ function Ready({ funds, total, missing }: { funds: FundInput[]; total: number; m
   );
 }
 
+/** Funds below this overlap with every other fund are left out of the matrix. */
+const FOCUS_MIN = 20;
+
 function Overlap({ pairs, matrix }: { pairs: PairOverlap[]; matrix: OverlapMatrix }) {
   const [all, setAll] = useState(false);
   const [open, setOpen] = useState<string | null>(null);
   const shown = all ? pairs : pairs.slice(0, 8);
+  const focus = useMemo(() => focusMatrix(matrix, FOCUS_MIN), [matrix]);
   const level = (o: number) => (o >= 50 ? "text-destructive" : o >= 35 ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground");
 
   return (
@@ -296,7 +300,16 @@ function Overlap({ pairs, matrix }: { pairs: PairOverlap[]; matrix: OverlapMatri
           />
         </div>
       )}
-      {matrix.names.length >= 2 && matrix.names.length <= 12 && <Matrix matrix={matrix} />}
+      {focus && (
+        <div className="space-y-1.5">
+          <p className="text-xs text-muted-foreground">
+            {focus.names.length === matrix.names.length
+              ? "Overlap between every pair of your equity funds."
+              : `The ${focus.names.length} of your ${matrix.names.length} equity funds that overlap ${FOCUS_MIN}% or more with another. The rest are well differentiated.`}
+          </p>
+          <Matrix matrix={focus} />
+        </div>
+      )}
       {pairs.length === 0 && <p className="text-sm text-muted-foreground">No two of your equity funds share a stock, or you hold only one.</p>}
       {shown.map((p) => {
         const key = `${p.a}|${p.b}`;

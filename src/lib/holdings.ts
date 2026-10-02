@@ -116,6 +116,13 @@ export function overlapMatrix(funds: FundInput[]): OverlapMatrix {
   return { names: eq.map((f) => f.name), cells, weighted: den > 0 ? num / den : null, top: overlaps(eq)[0] ?? null };
 }
 
+/** The matrix cut down to funds that overlap at least `min` percent with some other fund; null if fewer than two qualify. */
+export function focusMatrix(m: OverlapMatrix, min = 20): OverlapMatrix | null {
+  const keep = m.names.flatMap((_, i) => (m.cells[i].some((o, j) => j !== i && o >= min) ? [i] : []));
+  if (keep.length < 2) return null;
+  return { ...m, names: keep.map((i) => m.names[i]), cells: keep.map((i) => keep.map((j) => m.cells[i][j])) };
+}
+
 // ---- Look-through: what you own underneath the funds ----
 
 export interface StockExposure {

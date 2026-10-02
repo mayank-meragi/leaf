@@ -67,7 +67,7 @@ export const METRICS = {
   portfolioOverlap: {
     title: "Portfolio overlap",
     means: "The average overlap across all your fund pairs, weighted by how much you hold in each. Two big positions that overlap count far more than a big one and a tiny one.",
-    good: "Under about 30% is healthy. Above 40–50% suggests you own several funds that are really one portfolio. Compare it with the matrix to find which pair is responsible.",
+    good: "Under about 30% is healthy. Above 40–50% suggests you own several funds that are really one portfolio. The matrix below shows which funds are responsible.",
     caution: "Don't chase the lowest possible number. A fund you hold for a different job (small cap next to a large cap) can overlap little and still be worth having.",
   },
   effectiveStocks: {

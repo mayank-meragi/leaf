@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Goal, MFTransaction, MFTxnType } from "@/types";
 import type { SchemeGroup } from "./capitalGains";
 import { futureValue, monthsUntil, projectGoal, requiredMonthly } from "./goals";
-import { costs, lookThrough, monthsOld, overlapMatrix, overlaps, pairOverlap, type FundHoldings, type FundInput } from "./holdings";
+import { costs, lookThrough, focusMatrix, monthsOld, overlapMatrix, overlaps, pairOverlap, type FundHoldings, type FundInput } from "./holdings";
 import { navOn, parseSeries, queryVariants, resolveScheme, type NavApi, type NavSeries } from "./nav";
 import { compareBenchmark, hasFullHistory, monthEnds, openingUnits, valueHistory } from "./performance";
 import { planMix, planTypeOf } from "./planType";
@@ -233,6 +233,12 @@ describe("overlap matrix", () => {
     // pairs: A-B (100*100, 10%), A-C (100*10, 0%), B-C (100*10, 0%)
     expect(m.weighted).toBeCloseTo((10_000 * 10) / 12_000, 6);
     expect(m.top).toMatchObject({ a: "A", b: "B", overlap: 10 });
+  });
+  it("focuses on funds that overlap with another, and drops the rest", () => {
+    const m = overlapMatrix([{ name: "A", value: 100, fund: a }, { name: "B", value: 100, fund: b }, { name: "C", value: 100, fund: c }]);
+    expect(focusMatrix(m, 10)!.names).toEqual(["A", "B"]);
+    expect(focusMatrix(m, 10)!.cells).toEqual([[100, 10], [10, 100]]);
+    expect(focusMatrix(m, 20)).toBeNull(); // nothing overlaps that much
   });
   it("has no portfolio figure with a single equity fund", () => {
     const m = overlapMatrix([{ name: "A", value: 100, fund: a }]);

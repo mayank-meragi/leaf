@@ -1,6 +1,6 @@
 // Import path for documents that don't arrive by email: file → text (unlocking PDFs) → Gemini → records.
 
-import type { DocKind, DocSource, InsurancePolicy, LeafConfig, Payslip, TaxDocument, WealthAccount, WealthKind, WealthSnapshot } from "@/types";
+import type { DocKind, DocSource, InsurancePolicy, LeafConfig, Payslip, PolicyTerms, TaxDocument, WealthAccount, WealthKind, WealthSnapshot } from "@/types";
 import type { DocExtraction, DocInput } from "./ai/documents";
 import type { LeafData } from "./db";
 import { PATHS } from "./db";
@@ -95,7 +95,7 @@ export interface DocumentChange {
 }
 
 /** Works out where an extracted document goes. Pure: returns the files to write. */
-export function applyDocument(x: DocExtraction, data: LeafData, source: DocSource, today: string): DocumentChange {
+export function applyDocument(x: DocExtraction, data: LeafData, source: DocSource, today: string, terms?: PolicyTerms): DocumentChange {
   const wealthKind = WEALTH_KIND_OF[x.kind as DocKind];
 
   if (wealthKind) {
@@ -150,11 +150,14 @@ export function applyDocument(x: DocExtraction, data: LeafData, source: DocSourc
       premium: x.premium || undefined,
       renewalDate: iso(x.renewalDate),
       insured: x.insured || undefined,
+      terms,
       source,
     };
     const same = (p: InsurancePolicy) => p.insurer === policy.insurer && (p.policyRef ?? "") === (policy.policyRef ?? "");
+    // A schedule without the wording shouldn't wipe terms read from an earlier document.
+    policy.terms ??= data.policies.find(same)?.terms;
     const policies = [...data.policies.filter((p) => !same(p)), policy];
-    return { files: { [PATHS.policies]: policies }, description: `${x.institution} ${policy.type.replace("_", " ")} policy${policy.cover ? `, cover ₹${policy.cover.toLocaleString("en-IN")}` : ""}${policy.renewalDate ? `, renews ${policy.renewalDate}` : ""}` };
+    return { files: { [PATHS.policies]: policies }, description: `${x.institution} ${policy.type.replace("_", " ")} policy${policy.cover ? `, cover ₹${policy.cover.toLocaleString("en-IN")}` : ""}${policy.renewalDate ? `, renews ${policy.renewalDate}` : ""}${terms && Object.keys(terms).length ? ". Policy terms read" : ""}` };
   }
 
   throw new Error("This doesn't look like a document Leaf tracks (passbook, statement, payslip, Form 16, policy, loan)");

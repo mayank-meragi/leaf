@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react";
-import { AlertTriangleIcon, ArrowRightIcon, MergeIcon, PencilIcon, PlusIcon, ShieldIcon } from "lucide-react";
+import { AlertTriangleIcon, ArrowRightIcon, MergeIcon, PencilIcon, PlusIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { ViewProps } from "@/App";
 import { day, money } from "@/lib/format";
@@ -104,8 +104,6 @@ export default function NetWorth({ onOpenFunds, onOpenEpf, onOpenStocks, ...prop
       )}
       <Lines title="Liabilities" lines={nw.liabilities} today={today} editable={accountById} onEdit={(a) => setEditing({ account: a, isNew: false })} openers={{ mf: onOpenFunds, epf: onOpenEpf, stocks: onOpenStocks }} />
 
-      <Protection policies={data.policies} today={today} />
-
       {editing && <AccountEditor store={store} data={data} reload={reload} editing={editing} onClose={() => setEditing(null)} />}
     </div>
   );
@@ -180,49 +178,6 @@ function Lines({ title, lines, today, editable, onEdit, openers }: LinesProps) {
             })}
           </TableBody>
         </Table>
-      </CardContent>
-    </Card>
-  );
-}
-
-function Protection({ policies, today }: { policies: ViewProps["data"]["policies"]; today: string }) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <ShieldIcon className="size-4" /> Insurance
-        </CardTitle>
-        <CardDescription>Not part of net worth. Import a policy document to track cover and renewals.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        {policies.length ? (
-          <ul className="divide-y text-sm">
-            {[...policies]
-              .sort((a, b) => (a.renewalDate ?? "9999").localeCompare(b.renewalDate ?? "9999"))
-              .map((p) => {
-                const soon = p.renewalDate && p.renewalDate >= today && Date.parse(p.renewalDate) - Date.parse(today) < 45 * 86_400_000;
-                return (
-                  <li key={`${p.insurer}-${p.policyRef}`} className="flex flex-wrap items-center gap-x-4 gap-y-1 py-2.5">
-                    <div className="min-w-0 flex-1">
-                      <div className="font-medium">
-                        {p.insurer} <span className="font-normal text-muted-foreground">· {p.type.replace("_", " ")}</span>
-                      </div>
-                      <div className="text-xs text-muted-foreground">{[p.policyRef, p.insured].filter(Boolean).join(" · ")}</div>
-                    </div>
-                    {p.cover && <span className="tabular-nums">{money(p.cover)} cover</span>}
-                    {p.premium && <span className="tabular-nums text-muted-foreground">{money(p.premium)} premium</span>}
-                    {p.renewalDate && (
-                      <Badge variant={soon ? "default" : "outline"} className="font-normal">
-                        Renews {day(p.renewalDate)}
-                      </Badge>
-                    )}
-                  </li>
-                );
-              })}
-          </ul>
-        ) : (
-          <p className="text-sm text-muted-foreground">No policies yet.</p>
-        )}
       </CardContent>
     </Card>
   );

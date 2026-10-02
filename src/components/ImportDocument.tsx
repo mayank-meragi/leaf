@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import type { ViewProps } from "@/App";
 import { StatementReader } from "@/lib/ai/bankStatement";
 import { DocumentReader } from "@/lib/ai/documents";
+import { PolicyReader } from "@/lib/ai/policy";
 import { applyStatement } from "@/lib/bankStatement";
 import { allCategories } from "@/lib/categories";
 import { applyStockStatement, csvRows, parseHoldings } from "@/lib/stocks";
@@ -84,7 +85,9 @@ export default function ImportDocument({ store, data, reload, label, mode = "doc
         review = { docKind: "bank_statement", title: KIND_LABEL.bank_statement, summary: `${x.bank} ${x.accountType === "credit_card" ? "credit card" : "account"} ••${x.accountLast4.slice(-4)}`, description: r.description, files: r.files };
       } else {
         const x = await new DocumentReader(geminiKey, settings.geminiModel || undefined).read(input, file.name);
-        const change = applyDocument(x, data, { kind: "upload", fileName: file.name }, new Date().toISOString().slice(0, 10));
+        // A policy's conditions (room rent, co-pay, waiting periods…) are read in a second pass over the same document.
+        const terms = x.kind === "insurance_policy" ? await new PolicyReader(geminiKey, settings.geminiModel || undefined).read(input, file.name).catch(() => undefined) : undefined;
+        const change = applyDocument(x, data, { kind: "upload", fileName: file.name }, new Date().toISOString().slice(0, 10), terms);
         review = { docKind: x.kind as DocKind, title: KIND_LABEL[x.kind] ?? "Document", summary: x.summary, description: change.description, files: change.files };
       }
       setStep({ kind: "review", file, review, password: typed ?? used });

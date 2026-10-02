@@ -52,7 +52,7 @@ const SOURCES: Source[] = [
   },
   {
     what: "Insurance",
-    how: "The policy schedule PDF from the insurer's app or welcome email (cover, premium, renewal date).",
+    how: "The policy PDF from the insurer's app or welcome email. The schedule gives cover, premium and renewal date; the full policy wording also gives room-rent limits, co-pay and waiting periods, which Leaf turns into what to watch for.",
   },
 ];
 

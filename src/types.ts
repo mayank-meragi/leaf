@@ -269,7 +269,32 @@ export interface InsurancePolicy {
   /** When the premium is next due / the policy renews. */
   renewalDate?: ISODate;
   insured?: string;
+  /** The conditions that decide what a claim pays, read from the policy document. Only what the document states. */
+  terms?: PolicyTerms;
   source: DocSource;
+}
+
+export interface PolicyTerms {
+  /** "no_limit", "capped" (a rupee or %-of-cover limit), "single_private" (a category), "shared". */
+  roomRent?: { kind: "no_limit" | "capped" | "single_private" | "shared"; detail?: string };
+  /** Share of every claim you pay yourself, in percent (0 = none). */
+  coPayPct?: number;
+  /** Amount you pay before the policy starts paying (top-up / super top-up plans). */
+  deductible?: number;
+  waitingPreExistingMonths?: number;
+  waitingSpecificMonths?: number;
+  /** Days after buying before any non-accident claim. */
+  initialWaitingDays?: number;
+  /** Cover refills after a claim uses it up. */
+  restore?: boolean;
+  /** Extra cover earned per claim-free year, in percent of the sum insured. */
+  noClaimBonusPct?: number;
+  floater?: boolean;
+  cashless?: boolean;
+  /** Per-treatment or per-item caps, as the policy words them. */
+  subLimits?: string[];
+  /** Exclusions worth knowing about, short. */
+  exclusions?: string[];
 }
 
 // ---- Stocks: a broker's holdings statement ----

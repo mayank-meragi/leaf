@@ -6,6 +6,7 @@ import {
   PanelLeftIcon,
   PiggyBankIcon,
   ReceiptIcon,
+  ShieldIcon,
   RefreshCwIcon,
   SettingsIcon,
   CandlestickChartIcon,
@@ -27,6 +28,7 @@ import { cn } from "./lib/utils";
 import Setup from "./components/Setup";
 import Home from "./components/Home";
 import Epf from "./components/Epf";
+import Insurance from "./components/Insurance";
 import Funds from "./components/Funds";
 import Stocks from "./components/Stocks";
 import NetWorth from "./components/NetWorth";
@@ -47,6 +49,7 @@ const TAB_ICONS: Record<Tab, LucideIcon> = {
   "Mutual funds": TrendingUpIcon,
   Stocks: CandlestickChartIcon,
   EPF: PiggyBankIcon,
+  Insurance: ShieldIcon,
   "Tax & income": ReceiptIcon,
   Settings: SettingsIcon,
 };
@@ -261,6 +264,8 @@ function Leaf({ settings, onSignOut, onSettings }: { settings: Settings; onSignO
         <Funds store={store} data={data} reload={reload} setData={setData} />
       ) : tab === "Stocks" ? (
         <Stocks store={store} data={data} reload={reload} setData={setData} />
+      ) : tab === "Insurance" ? (
+        <Insurance store={store} data={data} reload={reload} setData={setData} />
       ) : tab === "EPF" ? (
         <Epf store={store} data={data} reload={reload} setData={setData} />
       ) : tab === "Tax & income" ? (

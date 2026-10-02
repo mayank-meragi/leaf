@@ -14,18 +14,66 @@ export const STATEMENT_PARSER = "statement";
 const isoDay = (s: string) => (/^\d{4}-\d{2}-\d{2}$/.test(s) ? s : undefined);
 const dayDiff = (a: string, b: string) => Math.abs(Math.round((Date.parse(a) - Date.parse(b)) / 86_400_000));
 
-/** The email alert (or statement row) for the same money movement as `t`, skipping ones already `claimed`. */
+/**
+ * The email alert (or statement row) for the same money movement as `t`, skipping ones already `claimed`.
+ * Both on the same account and within a day. A credit that names no account on one side (the payroll "salary
+ * credited" email, some bank alerts) also matches, and a payroll email can precede the credit by a few days.
+ */
 export function findSameTransaction(t: Transaction, candidates: Transaction[], claimed: Set<string>): Transaction | undefined {
   const key = instrumentKey(t);
-  if (!key) return undefined;
-  return candidates.find(
-    (c) =>
-      !claimed.has(c.id) &&
-      c.direction === t.direction &&
-      Math.abs(c.amount - t.amount) <= 0.5 &&
-      dayDiff(c.date, t.date) <= 1 &&
-      instrumentKey(c) === key,
-  );
+  return candidates.find((c) => {
+    if (claimed.has(c.id) || c.id === t.id || c.direction !== t.direction || Math.abs(c.amount - t.amount) > 0.5) return false;
+    const other = instrumentKey(c);
+    if (key && other) return key === other && dayDiff(c.date, t.date) <= 1;
+    const payroll = c.source.parser === "payroll" || t.source.parser === "payroll";
+    return t.direction === "credit" && dayDiff(c.date, t.date) <= (payroll ? 3 : 1);
+  });
+}
+
+/** `alert` with the account details a matching statement row knows (and its balance), so the balance counts for the account. */
+function enriched(alert: Transaction, row: Transaction): Transaction {
+  return {
+    ...alert,
+    instrument: alert.instrument ?? row.instrument,
+    instrumentKind: alert.instrumentKind ?? row.instrumentKind,
+    balanceAfter: alert.balanceAfter ?? row.balanceAfter,
+    // An alert that named no account is ordered by the row, so later rows of that day still count after it.
+    source: alert.instrument ? alert.source : { ...alert.source, receivedAt: row.source.receivedAt },
+  };
+}
+
+export interface DuplicatePair {
+  /** The email-sourced transaction, with the account details and balance the statement row had. */
+  keep: Transaction;
+  /** The statement row it duplicates. */
+  drop: Transaction;
+}
+
+/** Statement rows that an email-sourced transaction already records (e.g. salary: the payroll email and the bank credit). */
+export function statementDuplicates(transactions: Transaction[]): DuplicatePair[] {
+  const rows = transactions.filter((t) => t.source.parser === STATEMENT_PARSER);
+  const alerts = transactions.filter((t) => t.source.parser !== STATEMENT_PARSER);
+  const claimed = new Set<string>();
+  const pairs: DuplicatePair[] = [];
+  for (const drop of rows) {
+    const alert = findSameTransaction(drop, alerts, claimed);
+    if (!alert) continue;
+    claimed.add(alert.id);
+    pairs.push({ keep: enriched(alert, drop), drop });
+  }
+  return pairs;
+}
+
+/** Month files with each pair folded into one transaction. */
+export function mergeDuplicates(transactions: Transaction[], pairs: DuplicatePair[]): Record<string, Transaction[]> {
+  const drop = new Set(pairs.map((p) => p.drop.id));
+  const keep = new Map(pairs.map((p) => [p.keep.id, p.keep]));
+  const months = new Set(pairs.flatMap((p) => [p.keep.date.slice(0, 7), p.drop.date.slice(0, 7)]));
+  const files: Record<string, Transaction[]> = {};
+  for (const m of months) {
+    files[`transactions/${m}.json`] = transactions.filter((t) => t.date.startsWith(m) && !drop.has(t.id)).map((t) => keep.get(t.id) ?? t);
+  }
+  return files;
 }
 
 /** Drops new alerts that a statement already covers. */
@@ -103,7 +151,7 @@ export function applyStatement(x: StatementExtraction, data: LeafData, fileName:
     if (alert) {
       claimed.add(alert.id);
       duplicates++;
-      if (alert.balanceAfter == null && t.balanceAfter != null) updated.push({ ...alert, balanceAfter: t.balanceAfter });
+      if ((alert.balanceAfter == null && t.balanceAfter != null) || !alert.instrument) updated.push(enriched(alert, t));
       continue;
     }
     incoming.push(t);

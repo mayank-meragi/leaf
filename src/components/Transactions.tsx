@@ -1,11 +1,13 @@
 import { useMemo, useState } from "react";
-import { CreditCardIcon, SearchIcon } from "lucide-react";
+import { AlertTriangleIcon, CreditCardIcon, MergeIcon, SearchIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { ViewProps } from "@/App";
+import { mergeDuplicates, statementDuplicates } from "@/lib/bankStatement";
 import { allCategories, recategorize } from "@/lib/categories";
 import { saveRecategorization } from "@/lib/db";
 import { cardRecords, instrumentKey, instruments, KIND_LABEL, KIND_ORDER, paymentFor } from "@/lib/instruments";
@@ -82,12 +84,41 @@ export default function Transactions({ store, data, setData, initialSource }: Vi
     }
   };
 
+  const duplicates = useMemo(() => statementDuplicates(data.transactions), [data.transactions]);
+  const mergeAll = async () => {
+    setSaving(true);
+    try {
+      const files = mergeDuplicates(data.transactions, duplicates);
+      await store.writeJSON(files, `Merge ${duplicates.length} transactions counted twice`);
+      const drop = new Set(duplicates.map((d) => d.drop.id));
+      const keep = new Map(duplicates.map((d) => [d.keep.id, d.keep]));
+      setData({ ...data, transactions: data.transactions.filter((t) => !drop.has(t.id)).map((t) => keep.get(t.id) ?? t) });
+      toast.success(`Merged ${duplicates.length} duplicate transactions`);
+    } catch (e) {
+      toast.error("Couldn't merge", { description: (e as Error).message });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   if (!data.transactions.length) {
     return <Card className="py-16 text-center text-sm text-muted-foreground">No transactions yet. Hit Sync to pull them from Gmail.</Card>;
   }
 
   return (
     <div className="space-y-4">
+      {duplicates.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm">
+          <AlertTriangleIcon className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+          <p className="min-w-0 flex-1">
+            <b>{duplicates.length}</b> {duplicates.length === 1 ? "transaction is" : "transactions are"} counted twice ({money(duplicates.reduce((s, d) => s + d.drop.amount, 0))}
+            ): once from an email and once from a bank statement. Salary is the usual one.
+          </p>
+          <Button size="sm" variant="outline" disabled={saving} onClick={mergeAll}>
+            <MergeIcon /> Merge
+          </Button>
+        </div>
+      )}
       <div className="flex flex-wrap gap-2">
         <Select value={month} onValueChange={setMonth}>
           <SelectTrigger className="w-44">

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Transaction } from "@/types";
 import type { StatementExtraction } from "./ai/bankStatement";
-import { applyStatement, withoutStatementDuplicates } from "./bankStatement";
+import { applyStatement, mergeDuplicates, statementDuplicates, withoutStatementDuplicates } from "./bankStatement";
 import { EMPTY_CONFIG, type LeafData } from "./db";
 import { sourceStatus } from "./instruments";
 
@@ -84,5 +84,34 @@ describe("chunkStatement", () => {
     expect(chunks.length).toBeGreaterThan(1);
     expect(chunks[1]).toContain("HDFC BANK ••1234");
     expect(chunks.join("")).toContain("row 49");
+  });
+});
+
+describe("salary counted by the payroll email and the bank statement", () => {
+  const payroll = alert({ id: "me@x.com:p", date: "2026-09-02", amount: 300000, direction: "credit", description: "Salary", category: "Salary", instrument: undefined, source: { account: "me@x.com", messageId: "p", parser: "payroll", receivedAt: "2026-09-01T10:00:00.000Z" } });
+
+  it("is one transaction when a statement lands after the payroll email, and takes on the account and balance", () => {
+    const r = applyStatement(stmt([row("2026-09-02", 300000, "credit", 350000, "SALARY RAZORPAYX")]), data([payroll]), "f.pdf");
+    expect(r.added).toBe(0);
+    const out = Object.values(r.files).flat() as Transaction[];
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({ id: payroll.id, category: "Salary", instrument: "HDFC A/c ••1234", balanceAfter: 350000 });
+  });
+
+  it("repairs a statement imported before this was handled", () => {
+    const rowTxn = (Object.values(applyStatement(stmt([row("2026-09-03", 300000, "credit", 350000)]), data(), "f.pdf").files).flat() as Transaction[])[0];
+    const all = [payroll, rowTxn, alert({ id: "x", date: "2026-09-03", amount: 99, direction: "debit" })];
+    const pairs = statementDuplicates(all);
+    expect(pairs).toHaveLength(1);
+    const files = mergeDuplicates(all, pairs);
+    const sep = files["transactions/2026-09.json"];
+    expect(sep.map((t) => t.id).sort()).toEqual(["me@x.com:p", "x"]);
+    expect(sep.find((t) => t.id === payroll.id)).toMatchObject({ instrument: "HDFC A/c ••1234", balanceAfter: 350000 });
+  });
+
+  it("doesn't merge two debits that merely look alike across an unnamed account", () => {
+    const noAccount = alert({ instrument: undefined, amount: 500, date: "2026-09-02" });
+    const r = applyStatement(stmt([row("2026-09-02", 500, "debit", 9500)]), data([noAccount]), "f.pdf");
+    expect(r.added).toBe(1);
   });
 });

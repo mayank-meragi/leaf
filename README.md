@@ -2,7 +2,7 @@
 
 A personal finance tracker with **no backend**. It runs entirely in your browser:
 
-- **Gmail (multiple accounts)** → bank, card and UPI alert emails are read-only fetched and turned into transactions by **Gemini**.
+- **Gmail (multiple accounts)** → bank, card and UPI alert emails are read-only fetched and turned into transactions by **OpenAI**.
 - **Mutual funds** → CAMS / KFintech **detailed CAS** PDFs (from Gmail or uploaded) are decrypted and parsed locally with pdf.js,
   or upload MF Central's **CAS detailed report (.xlsx)**.
 - **Categories** → pick or create one from any transaction. Tagging a counterparty re-tags its history and becomes a rule for future syncs.
@@ -11,7 +11,7 @@ A personal finance tracker with **no backend**. It runs entirely in your browser
 ```
 Browser (Leaf SPA)
  ├── Google Identity Services ── gmail.readonly token per account (1h, in sessionStorage)
- ├── Gemini API ─────────────── alert emails → structured transactions (+ category)
+ ├── OpenAI API ─────────────── alert emails → structured transactions (+ category)
  ├── pdf.js + CAS parser ────── CAS PDF → folios / schemes / transactions / valuation
  └── GitHub REST API ────────── read/commit JSON in <you>/leaf-data
 ```
@@ -29,7 +29,7 @@ mf/<to-date>--<id>.json     one parsed CAS statement per file
 1. **Data repo**: create a private repo (e.g. `leaf-data`). Then create a
    [fine-grained token](https://github.com/settings/personal-access-tokens/new) limited to that repo with
    **Contents: Read and write**.
-2. **Gemini key**: from [Google AI Studio](https://aistudio.google.com/apikey).
+2. **OpenAI key**: from [platform.openai.com](https://platform.openai.com/api-keys).
 3. **Google OAuth client** (for Gmail):
    - In Google Cloud Console, create a project and enable the **Gmail API**.
    - OAuth consent screen: *External*, publishing status **Testing**, and add each Gmail address you'll connect as a **test user**.
@@ -46,7 +46,7 @@ mf/<to-date>--<id>.json     one parsed CAS statement per file
    pnpm dev
    ```
 
-5. In the app, enter the repo, token and Gemini key, then go to **Settings → Connect Gmail account** (repeat per account),
+5. In the app, enter the repo, token and OpenAI key, then go to **Settings → Connect Gmail account** (repeat per account),
    set your **CAS password** (PAN in capitals), and hit **Sync**.
 
 For mutual funds, request a **detailed** CAS from [CAMS](https://www.camsonline.com/Investors/Statements/Consolidated-Account-Statement)
@@ -59,14 +59,14 @@ to a connected inbox. The next sync picks it up, or you can upload the PDF on th
 Authorized JavaScript origins. The site holds no data; every visitor brings their own GitHub token.
 
 **Other devices (e.g. your phone):** open the deployed site, enter the data repo and a GitHub token. The Google
-client ID comes from `config.json`; the Gemini key too, if you chose **Settings → Other devices → Save this
+client ID comes from `config.json`; the OpenAI key too, if you chose **Settings → Other devices → Save this
 device's key to repo**.
 
 ## Security notes
 
-- Tokens and API keys are stored in the browser (localStorage / sessionStorage) and are sent only to GitHub, Google and Gemini.
+- Tokens and API keys are stored in the browser (localStorage / sessionStorage) and are sent only to GitHub, Google and OpenAI.
 - Your financial data lives in your private repo. Anyone with access to that repo can read it.
-- Email text is sent to the Gemini API for extraction. On the free tier, Google may use prompts to improve its products; use a paid key if that matters to you.
+- Email text is sent to the OpenAI API for extraction. OpenAI's API data-usage policy applies to it.
 
 ## Development
 

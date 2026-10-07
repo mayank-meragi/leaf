@@ -1,4 +1,4 @@
-// Which emails are worth sending to Gemini. Kept deliberately broad: the model decides
+// Which emails are worth sending to OpenAI. Kept deliberately broad: the model decides
 // what is actually a transaction, this just keeps newsletters and chat out of the batch.
 
 export const ALERT_SENDERS = [
@@ -15,7 +15,7 @@ export const ALERT_SENDERS = [
   "getonecard.app", "federalbank.co.in", "federal.bank.in", "scapia.cards",
 ];
 
-/** Marketing senders on the same domains as card alerts; skipping them saves Gemini calls. */
+/** Marketing senders on the same domains as card alerts; skipping them saves OpenAI calls. */
 const MARKETING_SENDERS = ["notify@getonecard.app", "offers.scapia.cards", "travel.scapia.cards", "offers.sbicard.com", "communications1@sbicard.com"];
 
 /** `onlyExtra` searches just the given senders (used to backfill newly added ones). */

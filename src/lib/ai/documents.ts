@@ -2,9 +2,8 @@
 // One schema covers every kind; fields that don't apply come back as ""/0 (sentinels keep the JSON
 // schema simple and avoid nullable types).
 
-import { GoogleGenAI } from "@google/genai";
 import { z } from "zod";
-import { DEFAULT_MODEL } from "./extract";
+import { DEFAULT_MODEL, generateJson, type Part } from "./llm";
 
 export const DOC_KINDS = [
   "epf_passbook",
@@ -65,26 +64,17 @@ For passbooks and statements, balance is the closing / current total (for EPF: e
 export type DocInput = { text: string } | { inline: { mimeType: string; data: string } };
 
 export class DocumentReader {
-  private ai: GoogleGenAI;
-
   constructor(
-    apiKey: string,
+    private apiKey: string,
     private model = DEFAULT_MODEL,
   ) {
-    this.ai = new GoogleGenAI({ apiKey });
   }
 
   async read(input: DocInput, fileName: string): Promise<DocExtraction> {
-    const parts =
+    const parts: Part[] =
       "text" in input
         ? [{ text: `File: ${fileName}\n\n${input.text.slice(0, 120_000)}` }]
-        : [{ inlineData: input.inline }, { text: `File: ${fileName}` }];
-    const res = await this.ai.models.generateContent({
-      model: this.model,
-      contents: [{ role: "user", parts }],
-      config: { systemInstruction: SYSTEM, responseMimeType: "application/json", responseJsonSchema: z.toJSONSchema(DocSchema), temperature: 0 },
-    });
-    if (!res.text) throw new Error(`Gemini returned no output (${res.candidates?.[0]?.finishReason ?? "unknown"})`);
-    return DocSchema.parse(JSON.parse(res.text));
+        : [{ inline: input.inline }, { text: `File: ${fileName}` }];
+    return generateJson({ apiKey: this.apiKey, model: this.model, system: SYSTEM, parts, schema: DocSchema });
   }
 }

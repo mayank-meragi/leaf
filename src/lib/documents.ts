@@ -1,4 +1,4 @@
-// Import path for documents that don't arrive by email: file → text (unlocking PDFs) → Gemini → records.
+// Import path for documents that don't arrive by email: file → text (unlocking PDFs) → OpenAI → records.
 
 import type { DocKind, DocSource, InsurancePolicy, LeafConfig, Payslip, PolicyTerms, TaxDocument, WealthAccount, WealthKind, WealthSnapshot } from "@/types";
 import type { DocExtraction, DocInput } from "./ai/documents";
@@ -22,7 +22,7 @@ export function knownPasswords(config: LeafConfig): string[] {
 }
 
 /**
- * Turns a file into something Gemini can read. Text PDFs become text (after trying passwords);
+ * Turns a file into something OpenAI can read. Text PDFs become text (after trying passwords);
  * scanned PDFs and images go inline. Throws NeedsPasswordError if no known password opens it.
  */
 export async function loadDocument(file: File, passwords: string[]): Promise<{ input: DocInput; password?: string }> {

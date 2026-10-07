@@ -1,12 +1,11 @@
-// Gemini turns raw alert emails into transactions. Emails are sent in batches so a sync of a few
+// The model turns raw alert emails into transactions. Emails are sent in batches so a sync of a few
 // hundred alerts is a handful of calls, and the response is constrained to a JSON schema.
 
-import { GoogleGenAI } from "@google/genai";
 import { z } from "zod";
 import type { ParsedEmail } from "@/lib/google/gmail";
+import { DEFAULT_MODEL, generateJson } from "./llm";
 
-export const DEFAULT_MODEL = "gemini-flash-latest";
-
+export { DEFAULT_MODEL };
 
 // Built per sync so user-created categories are offered to the model too.
 function schema(categories: string[]) {
@@ -80,15 +79,13 @@ const MAX_EMAIL_CHARS = 4000;
 const BATCH_SIZE = 25;
 
 export class Extractor {
-  private ai: GoogleGenAI;
   private schema: ReturnType<typeof schema>;
 
   constructor(
-    apiKey: string,
+    private apiKey: string,
     categories: string[],
     private model = DEFAULT_MODEL,
   ) {
-    this.ai = new GoogleGenAI({ apiKey });
     this.schema = schema(categories);
   }
 
@@ -100,18 +97,7 @@ export class Extractor {
       )
       .join("\n\n");
 
-    const res = await this.ai.models.generateContent({
-      model: this.model,
-      contents: input,
-      config: {
-        systemInstruction: system,
-        responseMimeType: "application/json",
-        responseJsonSchema: z.toJSONSchema(schema),
-        temperature: 0,
-      },
-    });
-    if (!res.text) throw new Error(`Gemini returned no output (${res.candidates?.[0]?.finishReason ?? "unknown"})`);
-    const parsed = schema.parse(JSON.parse(res.text)) as z.infer<S>;
+    const parsed = (await generateJson({ apiKey: this.apiKey, model: this.model, system, parts: [{ text: input }], schema })) as z.infer<S>;
     return parsed.results.filter((r) => r.emailIndex >= 0 && r.emailIndex < emails.length) as z.infer<S>["results"];
   }
 

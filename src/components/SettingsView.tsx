@@ -119,7 +119,7 @@ export default function SettingsView({ store, data, setData, settings, onSetting
           </Button>
         </SectionCard>
         <GoogleSignIn config={config} busy={busy} onSaveConfig={saveConfig} />
-        <Gemini config={config} settings={settings} busy={busy} onSaveConfig={saveConfig} onSettings={onSettings} />
+        <OpenAI config={config} settings={settings} busy={busy} onSaveConfig={saveConfig} onSettings={onSettings} />
       </Group>
 
       <Group title="Passwords" hint="For locked statements from email and uploads.">
@@ -146,7 +146,7 @@ export default function SettingsView({ store, data, setData, settings, onSetting
               </Button>
             }
             title="Sign out of this device?"
-            description="Leaf forgets the GitHub token and Gemini key in this browser. Your data in the repo is untouched."
+            description="Leaf forgets the GitHub token and OpenAI key in this browser. Your data in the repo is untouched."
             confirmLabel="Sign out"
             destructive
             onConfirm={() => {
@@ -261,21 +261,21 @@ function GoogleSignIn({ config, busy, onSaveConfig }: ConfigProps) {
 }
 
 /** The model and API key that read your emails and documents. The key can stay on this device or live in the repo for others. */
-function Gemini({ config, settings, busy, onSaveConfig, onSettings }: ConfigProps & { settings: Settings; onSettings: (s: Settings) => void }) {
-  const [model, setModel] = useState(settings.geminiModel ?? "");
+function OpenAI({ config, settings, busy, onSaveConfig, onSettings }: ConfigProps & { settings: Settings; onSettings: (s: Settings) => void }) {
+  const [model, setModel] = useState(settings.openaiModel ?? "");
   const [deviceKey, setDeviceKey] = useState("");
-  const keySource = settings.geminiKey ? "device" : config.geminiKey ? "repo" : "none";
+  const keySource = settings.openaiKey ? "device" : config.openaiKey ? "repo" : "none";
 
   return (
-    <SectionCard title="Gemini" description="Reads your bank alerts and imported documents." bodyClassName="space-y-5">
+    <SectionCard title="OpenAI" description="Reads your bank alerts and imported documents." bodyClassName="space-y-5">
       <div className="space-y-1.5">
         <Label htmlFor="model">Model</Label>
         <div className="flex gap-2">
           <Input id="model" className="font-mono" value={model} placeholder={DEFAULT_MODEL} onChange={(e) => setModel(e.target.value.trim())} />
           <Button
-            disabled={model === (settings.geminiModel ?? "")}
+            disabled={model === (settings.openaiModel ?? "")}
             onClick={() => {
-              const next = { ...settings, geminiModel: model || undefined };
+              const next = { ...settings, openaiModel: model || undefined };
               saveSettings(next);
               onSettings(next);
               toast.success("Model saved");
@@ -289,31 +289,31 @@ function Gemini({ config, settings, busy, onSaveConfig, onSettings }: ConfigProp
       <div className="space-y-2">
         <Label>API key</Label>
         <p className="text-sm text-muted-foreground">
-          {keySource === "device" && (config.geminiKey ? "This device has its own key; a copy is also in your repo." : "Only on this device.")}
+          {keySource === "device" && (config.openaiKey ? "This device has its own key; a copy is also in your repo." : "Only on this device.")}
           {keySource === "repo" && "Using the copy saved in your repo."}
           {keySource === "none" && "No key on this device or in your repo: syncing and document import need one."}
         </p>
         <div className="flex flex-wrap gap-2">
-          {settings.geminiKey && settings.geminiKey !== config.geminiKey && (
+          {settings.openaiKey && settings.openaiKey !== config.openaiKey && (
             <Button
               variant="outline"
               disabled={busy}
               onClick={async () => {
-                if (await onSaveConfig({ ...config, geminiKey: settings.geminiKey }, "Store Gemini key for other devices"))
-                  toast.success("Gemini key saved to your repo; other devices can now sync");
+                if (await onSaveConfig({ ...config, openaiKey: settings.openaiKey }, "Store OpenAI key for other devices"))
+                  toast.success("OpenAI key saved to your repo; other devices can now sync");
               }}
             >
               Save this device's key to repo
             </Button>
           )}
-          {config.geminiKey && (
+          {config.openaiKey && (
             <Button
               variant="ghost"
               className="text-destructive hover:text-destructive"
               disabled={busy}
               onClick={async () => {
-                const { geminiKey: _removed, ...rest } = config;
-                if (await onSaveConfig(rest as LeafConfig, "Remove Gemini key from repo")) toast.success("Removed from your repo (git history still has it; rotate the key if that matters)");
+                const { openaiKey: _removed, ...rest } = config;
+                if (await onSaveConfig(rest as LeafConfig, "Remove OpenAI key from repo")) toast.success("Removed from your repo (git history still has it; rotate the key if that matters)");
               }}
             >
               Remove from repo
@@ -326,7 +326,7 @@ function Gemini({ config, settings, busy, onSaveConfig, onSettings }: ConfigProp
             variant="outline"
             disabled={!deviceKey}
             onClick={() => {
-              const next = { ...settings, geminiKey: deviceKey };
+              const next = { ...settings, openaiKey: deviceKey };
               saveSettings(next);
               onSettings(next);
               setDeviceKey("");

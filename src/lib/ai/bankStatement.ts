@@ -1,10 +1,9 @@
 // Reads a bank account (or credit card) statement into transactions. Long statements are read in
 // chunks of lines so a year of rows doesn't overflow the model's output.
 
-import { GoogleGenAI } from "@google/genai";
 import { z } from "zod";
 import type { DocInput } from "./documents";
-import { DEFAULT_MODEL } from "./extract";
+import { DEFAULT_MODEL, generateJson, type Part } from "./llm";
 
 function schema(categories: string[]) {
   return z.object({
@@ -60,30 +59,22 @@ export function chunkStatement(text: string, size = CHUNK_CHARS, headerChars = H
 }
 
 export class StatementReader {
-  private ai: GoogleGenAI;
   private schema: ReturnType<typeof schema>;
 
   constructor(
-    apiKey: string,
+    private apiKey: string,
     categories: string[],
     private model = DEFAULT_MODEL,
   ) {
-    this.ai = new GoogleGenAI({ apiKey });
     this.schema = schema(categories);
   }
 
-  private async call(parts: ({ text: string } | { inlineData: { mimeType: string; data: string } })[]): Promise<StatementExtraction> {
-    const res = await this.ai.models.generateContent({
-      model: this.model,
-      contents: [{ role: "user", parts }],
-      config: { systemInstruction: SYSTEM, responseMimeType: "application/json", responseJsonSchema: z.toJSONSchema(this.schema), temperature: 0 },
-    });
-    if (!res.text) throw new Error(`Gemini returned no output (${res.candidates?.[0]?.finishReason ?? "unknown"})`);
-    return this.schema.parse(JSON.parse(res.text));
+  private call(parts: Part[]): Promise<StatementExtraction> {
+    return generateJson({ apiKey: this.apiKey, model: this.model, system: SYSTEM, parts, schema: this.schema });
   }
 
   async read(input: DocInput, fileName: string, onProgress?: (done: number, total: number) => void): Promise<StatementExtraction> {
-    if (!("text" in input)) return this.call([{ inlineData: input.inline }, { text: `File: ${fileName}` }]);
+    if (!("text" in input)) return this.call([{ inline: input.inline }, { text: `File: ${fileName}` }]);
 
     const chunks = chunkStatement(input.text);
     const parts: StatementExtraction[] = [];

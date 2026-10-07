@@ -22,8 +22,9 @@ import { Extractor } from "./lib/ai/extract";
 import { allCategories } from "./lib/categories";
 import { loadAll, storeFor, type LeafData } from "./lib/db";
 import type { GitHubStore } from "./lib/github/store";
-import { clearSettings, loadSettings, resolveGeminiKey, type Settings } from "./lib/settings";
-import { sync, type SyncProgress } from "./lib/sync";
+import { clearSettings, loadSettings, resolveOpenAIKey, type Settings } from "./lib/settings";
+import { sync } from "./lib/sync";
+import { addActivity, SyncStatus, type SyncActivity } from "./components/SyncStatus";
 import { cn } from "./lib/utils";
 import Setup from "./components/Setup";
 import Home from "./components/Home";
@@ -84,7 +85,7 @@ function Leaf({ settings, onSignOut, onSettings }: { settings: Settings; onSignO
   const [data, setData] = useState<LeafData | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("Home");
-  const [progress, setProgress] = useState<SyncProgress | null>(null);
+  const [progress, setProgress] = useState<SyncActivity | null>(null);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem("leaf.sidebar") === "collapsed");
   const toggleSidebar = () =>
     setCollapsed((c) => {
@@ -117,15 +118,15 @@ function Leaf({ settings, onSignOut, onSettings }: { settings: Settings; onSignO
 
   const runSync = async () => {
     if (!data) return;
-    const geminiKey = resolveGeminiKey(settings, data.config);
-    if (!geminiKey) {
-      toast.error("No Gemini key on this device", { description: "Add it under Settings → Other devices, or save it to your repo from a device that has it." });
+    const openaiKey = resolveOpenAIKey(settings, data.config);
+    if (!openaiKey) {
+      toast.error("No OpenAI key on this device", { description: "Add it under Settings → Other devices, or save it to your repo from a device that has it." });
       return;
     }
     try {
-      const extractor = new Extractor(geminiKey, allCategories(data.config), settings.geminiModel || undefined);
-      const reader = new DocumentReader(geminiKey, settings.geminiModel || undefined);
-      const result = await sync(store, data, extractor, reader, setProgress);
+      const extractor = new Extractor(openaiKey, allCategories(data.config), settings.openaiModel || undefined);
+      const reader = new DocumentReader(openaiKey, settings.openaiModel || undefined);
+      const result = await sync(store, data, extractor, reader, (p) => setProgress((prev) => addActivity(prev, p)));
       const summary = [
         `${result.transactions} new transactions`,
         result.updated && `${result.updated} updated`,
@@ -204,12 +205,7 @@ function Leaf({ settings, onSignOut, onSettings }: { settings: Settings; onSignO
           </div>
           <h1 className="hidden text-2xl font-semibold tracking-tight md:block">{tab}</h1>
           <div className="ml-auto flex min-w-0 items-center gap-3">
-            {progress && (
-              <span className="hidden max-w-xs truncate text-xs text-muted-foreground sm:inline">
-                {progress.account && <b className="font-medium">{progress.account}: </b>}
-                {progress.message}
-              </span>
-            )}
+            {progress && <SyncStatus activity={progress} />}
             {data && <ImportMenu store={store} data={data} reload={reload} setData={setData} />}
             <Button
               onClick={startSync}

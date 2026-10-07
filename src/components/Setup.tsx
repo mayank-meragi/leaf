@@ -11,7 +11,7 @@ import { saveSettings, type Settings } from "@/lib/settings";
 const link = "font-medium text-primary underline underline-offset-4";
 
 export default function Setup({ onDone }: { onDone: (s: Settings) => void }) {
-  const [s, setS] = useState<Settings>({ githubToken: "", owner: "", repo: "leaf-data", branch: "main", geminiKey: "" });
+  const [s, setS] = useState<Settings>({ githubToken: "", owner: "", repo: "leaf-data", branch: "main", openaiKey: "" });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const set = (k: keyof Settings) => (e: React.ChangeEvent<HTMLInputElement>) => setS({ ...s, [k]: e.target.value.trim() });
@@ -73,7 +73,7 @@ export default function Setup({ onDone }: { onDone: (s: Settings) => void }) {
             <Separator className="my-6" />
 
             <div className="space-y-1.5">
-              <h3 className="leading-none font-semibold">Gemini</h3>
+              <h3 className="leading-none font-semibold">OpenAI</h3>
               <p className="text-sm text-muted-foreground">
                 Reads your bank alert emails. Get a key from{" "}
                 <a className={link} href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">
@@ -82,11 +82,11 @@ export default function Setup({ onDone }: { onDone: (s: Settings) => void }) {
                 .
               </p>
             </div>
-            <Field label="Gemini API key" id="gemini">
-              <Input id="gemini" className="font-mono" type="password" value={s.geminiKey} onChange={set("geminiKey")} placeholder="AIza… (optional on a second device)" />
+            <Field label="OpenAI API key" id="openai">
+              <Input id="openai" className="font-mono" type="password" value={s.openaiKey} onChange={set("openaiKey")} placeholder="sk-… (optional on a second device)" />
             </Field>
             <p className="text-xs text-muted-foreground">
-              Setting up another device? Just the repo and token are enough if you saved the Gemini key to your repo (Settings → Other devices);
+              Setting up another device? Just the repo and token are enough if you saved the OpenAI key to your repo (Settings → Other devices);
               the Google sign-in settings come from the repo automatically.
             </p>
             {error && <p className="text-sm text-destructive">{error}</p>}

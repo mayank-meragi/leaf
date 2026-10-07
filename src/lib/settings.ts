@@ -5,16 +5,16 @@ export interface Settings {
   owner: string;
   repo: string;
   branch: string;
-  /** Device copy; empty when the key is kept in the data repo instead (see `resolveGeminiKey`). */
-  geminiKey: string;
-  geminiModel?: string;
+  /** Device copy; empty when the key is kept in the data repo instead (see `resolveOpenAIKey`). */
+  openaiKey: string;
+  openaiModel?: string;
 }
 
 const KEY = "leaf.settings";
 
-/** This device's Gemini key, else the copy saved in the repo config. */
-export function resolveGeminiKey(settings: Settings, config: { geminiKey?: string }): string {
-  return settings.geminiKey || config.geminiKey || "";
+/** This device's OpenAI key, else the copy saved in the repo config. */
+export function resolveOpenAIKey(settings: Settings, config: { openaiKey?: string }): string {
+  return settings.openaiKey || config.openaiKey || "";
 }
 
 export function loadSettings(): Settings | null {

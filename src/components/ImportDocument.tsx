@@ -14,7 +14,7 @@ import { applyStatement } from "@/lib/bankStatement";
 import { allCategories } from "@/lib/categories";
 import { applyStockStatement, csvRows, parseHoldings } from "@/lib/stocks";
 import { applyDocument, knownPasswords, loadDocument, NeedsPasswordError } from "@/lib/documents";
-import { loadSettings, resolveGeminiKey } from "@/lib/settings";
+import { loadSettings, resolveOpenAIKey } from "@/lib/settings";
 import type { DocKind } from "@/types";
 
 type Step =
@@ -63,8 +63,8 @@ export default function ImportDocument({ store, data, reload, label, mode = "doc
     setStep({ kind: "reading", file });
     try {
       const settings = loadSettings()!;
-      const geminiKey = resolveGeminiKey(settings, data.config);
-      if (!geminiKey) throw new Error("No Gemini key on this device: add it under Settings → Other devices");
+      const openaiKey = resolveOpenAIKey(settings, data.config);
+      if (!openaiKey) throw new Error("No OpenAI key on this device: add it under Settings → Other devices");
       let review: Review;
       if (mode === "holdings") {
         // A broker's holdings file is a plain table: read it directly, no model involved.
@@ -78,15 +78,15 @@ export default function ImportDocument({ store, data, reload, label, mode = "doc
       }
       const { input, password: used } = await loadDocument(file, typed ? [typed] : knownPasswords(data.config));
       if (mode === "statement") {
-        const reader = new StatementReader(geminiKey, allCategories(data.config), settings.geminiModel || undefined);
+        const reader = new StatementReader(openaiKey, allCategories(data.config), settings.openaiModel || undefined);
         const x = await reader.read(input, file.name, (i, n) => n > 1 && toast.info(`Reading ${file.name}: part ${i + 1} of ${n}…`, { id: "statement-progress" }));
         toast.dismiss("statement-progress");
         const r = applyStatement(x, data, file.name);
         review = { docKind: "bank_statement", title: KIND_LABEL.bank_statement, summary: `${x.bank} ${x.accountType === "credit_card" ? "credit card" : "account"} ••${x.accountLast4.slice(-4)}`, description: r.description, files: r.files };
       } else {
-        const x = await new DocumentReader(geminiKey, settings.geminiModel || undefined).read(input, file.name);
+        const x = await new DocumentReader(openaiKey, settings.openaiModel || undefined).read(input, file.name);
         // A policy's conditions (room rent, co-pay, waiting periods…) are read in a second pass over the same document.
-        const terms = x.kind === "insurance_policy" ? await new PolicyReader(geminiKey, settings.geminiModel || undefined).read(input, file.name).catch(() => undefined) : undefined;
+        const terms = x.kind === "insurance_policy" ? await new PolicyReader(openaiKey, settings.openaiModel || undefined).read(input, file.name).catch(() => undefined) : undefined;
         const change = applyDocument(x, data, { kind: "upload", fileName: file.name }, new Date().toISOString().slice(0, 10), terms);
         review = { docKind: x.kind as DocKind, title: KIND_LABEL[x.kind] ?? "Document", summary: x.summary, description: change.description, files: change.files };
       }

@@ -5,7 +5,7 @@ import type { CASStatement } from "@/types";
 import { crc32, zip } from "./zip";
 
 const data: LeafData = {
-  config: { version: 1, accounts: [{ email: "someone@example.com" }], casPassword: "SECRETPASS", geminiKey: "SECRETKEY" },
+  config: { version: 1, accounts: [{ email: "someone@example.com" }], casPassword: "SECRETPASS", openaiKey: "SECRETKEY" },
   transactions: [
     { id: "a:1", date: "2026-09-01", amount: 1200, currency: "INR", direction: "debit", description: "Cafe, \"Corner\"", instrument: "HDFC Card ••1234", category: "Food", source: { account: "someone@example.com", messageId: "1", parser: "x" } },
     { id: "a:2", date: "2025-01-01", amount: 50, currency: "INR", direction: "credit", description: "Old", source: { account: "someone@example.com", messageId: "2", parser: "x" } },

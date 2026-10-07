@@ -41,10 +41,35 @@ const BACKFILL_DAYS = 60;
 /** Bump when the extraction gains fields worth backfilling. */
 export const PARSER = "gemini@2";
 
+/** The steps each inbox goes through, in order; `SyncProgress.stage` indexes into this. */
+export const SYNC_STAGES = ["Bank alerts", "Card bills", "NPS", "Payroll", "CAS statements"] as const;
+
+export interface SyncFound {
+  transactions: number;
+  updated: number;
+  cardStatements: number;
+  cardPayments: number;
+  wealth: number;
+  payroll: number;
+  statements: number;
+}
+
 export interface SyncProgress {
   account?: string;
   message: string;
+  /** Index into SYNC_STAGES for the inbox being read. */
+  stage?: number;
+  /** 0–1 across every inbox and stage. */
+  fraction: number;
+  accountIndex: number;
+  accountCount: number;
+  /** What has been extracted so far this sync. */
+  found: SyncFound;
+  /** A record that was just extracted, as one line. */
+  item?: string;
 }
+
+const rupees = (n: number) => `₹${n.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
 
 export interface SyncResult {
   transactions: number;
@@ -111,23 +136,57 @@ export async function sync(
   const warnings: string[] = [];
   const config: LeafConfig = structuredClone(data.config);
 
-  for (const account of config.accounts) {
+  let accountIndex = 0;
+  let stage = 0;
+  let within = 0;
+  let lastMessage = "";
+  let lastEmail: string | undefined;
+  const found = (): SyncFound => ({
+    transactions: newTxns.length,
+    updated: updated.length,
+    cardStatements: newCardStatements.length,
+    cardPayments: newCardPayments.length,
+    wealth: newSnapshots.length + newFlows.length,
+    payroll: newPayslips.length + newTaxDocs.length,
+    statements: newStatements.length,
+  });
+  const emit = (message: string, item?: string) => {
+    lastMessage = message;
+    const fraction = Math.min(1, (accountIndex + (stage + within) / SYNC_STAGES.length) / Math.max(1, config.accounts.length));
+    onProgress({ account: lastEmail, message, stage, fraction, accountIndex, accountCount: config.accounts.length, found: found(), item });
+  };
+  const note = (item: string) => emit(lastMessage, item);
+  const txnLine = (t: Transaction) => `${t.date} · ${t.description} · ${t.direction === "debit" ? "−" : "+"}${rupees(t.amount)}`;
+
+  for (const [index, account] of config.accounts.entries()) {
     const email = account.email;
+    accountIndex = index;
+    lastEmail = email;
+    stage = 0;
+    within = 0;
     if (needsSignIn([email], 0).length) {
       warnings.push(`${email} was skipped: sign in to it (Settings, or when you press Sync) to include it`);
       continue;
     }
     const after = account.syncedUntil ?? startedAt - FIRST_SYNC_DAYS * 86400;
-    const log = (message: string) => onProgress({ account: email, message });
-    // A deleted email shouldn't fail the whole sync.
-    const fetchAll = (ids: string[], label: string) =>
-      pool(ids, 4, (id) => getEmail(email, id).catch(() => null), (n) => log(`${label} ${n}/${ids.length}…`)).then((es) =>
+    const log = (message: string, w?: number) => {
+      if (w !== undefined) within = Math.min(1, w);
+      emit(message);
+    };
+    const begin = (s: number, message: string) => {
+      stage = s;
+      within = 0;
+      log(message);
+    };
+    // A deleted email shouldn't fail the whole sync. `scope` maps 0–1 fetch progress onto the stage's progress.
+    const fetchAll = (ids: string[], label: string, scope: (f: number) => number = (f) => f) =>
+      pool(ids, 4, (id) => getEmail(email, id).catch(() => null), (n) => log(`${label} ${n}/${ids.length}…`, scope(n / ids.length))).then((es) =>
         es.filter((e): e is ParsedEmail => e != null),
       );
 
     try {
       // Bank / card / UPI alerts
-      log("Searching alerts…");
+      begin(0, "Searching alerts…");
       const extra = (config.extraSenders ?? []).map((x) => x.sender);
       const ids = (await searchIds(email, alertQuery(after, extra), 2000)).filter((id) => !known.has(`${email}:${id}`));
       // Senders added since this inbox last synced get the same look-back as a first sync.
@@ -138,21 +197,27 @@ export async function sync(
       }
       // Work in chunks so a failure late in a big first sync doesn't throw away earlier progress.
       for (let i = 0; i < ids.length; i += CHUNK) {
-        const emails = await fetchAll(ids.slice(i, i + CHUNK), `Fetching emails (from ${i})`);
-        const extracted = await extractor.extract(emails, () => log(`Extracting with Gemini ${i + emails.length}/${ids.length}…`));
+        const size = Math.min(CHUNK, ids.length - i);
+        const emails = await fetchAll(ids.slice(i, i + CHUNK), `Fetching emails ${i + 1}–${i + size} of ${ids.length}`, (f) => (i + f * 0.5 * size) / ids.length);
+        const extracted = await extractor.extract(emails, (done) =>
+          log(`Reading emails with OpenAI ${i + done}/${ids.length}…`, (i + 0.5 * size + (0.5 * size * done) / Math.max(1, emails.length)) / ids.length),
+        );
         const batch = emails.flatMap((e) => (extracted.has(e.id) ? [toTxn(email, e, extracted.get(e.id)!)] : []));
         // The user's per-counterparty rules beat the model's guess; a bank statement already covering an alert wins over it.
-        newTxns.push(...applyRules(config, withoutStatementDuplicates(batch, data.transactions)));
+        const added = applyRules(config, withoutStatementDuplicates(batch, data.transactions));
+        newTxns.push(...added);
+        for (const t of added) note(txnLine(t));
       }
 
       // One-time re-read of recent transactions from an older parser, for balance / card type.
       // Only the new fields are taken; amount, description and category (possibly user-edited) stay.
       const cutoff = new Date(Date.now() - BACKFILL_DAYS * 86_400_000).toISOString().slice(0, 10);
       const stale = data.transactions.filter((t) => t.source.account === email && t.source.parser !== PARSER && t.date >= cutoff);
+      if (stale.length) begin(0, "Re-reading recent alerts for balances…");
       for (let i = 0; i < stale.length; i += CHUNK) {
         const chunk = stale.slice(i, i + CHUNK);
         const emails = await fetchAll(chunk.map((t) => t.source.messageId), "Re-reading recent alerts");
-        const extracted = await extractor.extract(emails, () => log(`Updating balances ${i + emails.length}/${stale.length}…`));
+        const extracted = await extractor.extract(emails, () => log(`Updating balances ${i + emails.length}/${stale.length}…`, 1));
         const byId = new Map(emails.map((e) => [e.id, e]));
         for (const t of chunk) {
           const e = byId.get(t.source.messageId);
@@ -168,11 +233,13 @@ export async function sync(
 
       // Card bills and bill payments (issuer statements, CRED "new bill" / "payment successful").
       // Not tied to the cursor, so the first run picks up recent history.
-      log("Searching card bills and payments…");
+      begin(1, "Searching card bills and payments…");
       const eventIds = (await searchIds(email, cardEventQuery(startedAt - CARD_EVENT_LOOKBACK_DAYS * 86400), 100)).filter((id) => !knownCardEvents.has(id));
       if (eventIds.length) {
-        const emails = await fetchAll(eventIds, "Fetching card bills");
+        const emails = await fetchAll(eventIds, "Fetching card bills", (f) => f * 0.5);
+        log(`Reading ${emails.length} card emails with OpenAI…`, 0.5);
         const events = await extractor.extractCardEvents(emails);
+        within = 1;
         const cards = instruments([...data.transactions, ...newTxns], config, cardRecords(data.cardStatements, data.cardPayments))
           .filter((c) => c.kind === "credit_card" || c.kind === "card")
           .map((c) => ({ key: c.key, last4: c.last4 }));
@@ -199,17 +266,19 @@ export async function sync(
           const src = { account: email, messageId: e.id };
           if (isStatement) {
             newCardStatements.push({ card, statementDate: date, totalDue: x.totalDue, minDue: x.minDue || undefined, dueDate: isoDay(x.dueDate), source: src });
+            note(`${date} · ${x.issuer} card bill · ${rupees(x.totalDue)} due`);
           } else if (x.amountPaid > 0) {
             newCardPayments.push({ card, amount: x.amountPaid, date, via: x.via || undefined, reference: x.reference || undefined, source: src });
+            note(`${date} · ${x.issuer} card payment · ${rupees(x.amountPaid)}`);
           }
         }
       }
 
       // NPS (Protean CRA): contribution credits add to the balance; the monthly statement resets it.
-      log("Searching NPS…");
+      begin(2, "Searching NPS…");
       const npsIds = (await searchIds(email, npsQuery(startedAt - NPS_LOOKBACK_DAYS * 86400), 200)).filter((id) => !knownDocs.has(id));
       if (npsIds.length) {
-        const emails = (await fetchAll(npsIds, "Fetching NPS emails")).sort((a, b) => b.date.getTime() - a.date.getTime());
+        const emails = (await fetchAll(npsIds, "Fetching NPS emails", (f) => f * 0.5)).sort((a, b) => b.date.getTime() - a.date.getTime());
         let statementsRead = 0;
         let locked = 0;
         const deleted = new Set(config.deletedAccounts ?? []);
@@ -225,7 +294,10 @@ export async function sync(
           const c = parseNpsContribution(e.text);
           if (c) {
             const account = ensure(c.pranTail, c.tier);
-            if (account) newFlows.push({ account, date: c.date, amount: c.amount, kind: "contribution", source: src });
+            if (account) {
+              newFlows.push({ account, date: c.date, amount: c.amount, kind: "contribution", source: src });
+              note(`${c.date} · NPS contribution · +${rupees(c.amount)}`);
+            }
             continue;
           }
           const pdf = e.attachments.find((a) => a.filename.toLowerCase().endsWith(".pdf"));
@@ -235,14 +307,18 @@ export async function sync(
             const bytes = await getAttachment(email, e.id, pdf.attachmentId);
             const { input } = await loadBytes(bytes, pdf.filename, "application/pdf", knownPasswords(config));
             statementsRead++;
-            log(`Reading NPS statement ${statementsRead}…`);
+            log(`Reading NPS statement ${statementsRead} with OpenAI…`, 0.5 + 0.1 * statementsRead);
             const x = await reader.read(input, pdf.filename);
             if (x.kind !== "nps_statement" || !(x.balance > 0)) continue;
             const known = [...new Set(wealthAccounts.filter((a) => a.kind === "nps").map(accountTail).filter(Boolean))];
             const tail = x.reference.replace(/\D/g, "").slice(-4) || (known.length === 1 ? known[0] : "");
             if (!tail) continue;
             const account = ensure(tail, 1);
-            if (account) newSnapshots.push({ account, date: isoDay(x.asOfDate) ?? e.date.toISOString().slice(0, 10), value: x.balance, source: src });
+            if (account) {
+              const date = isoDay(x.asOfDate) ?? e.date.toISOString().slice(0, 10);
+              newSnapshots.push({ account, date, value: x.balance, source: src });
+              note(`${date} · NPS statement · balance ${rupees(x.balance)}`);
+            }
           } catch (err) {
             if (err instanceof NeedsPasswordError) locked++;
             else warnings.push(`NPS statement “${e.subject.slice(0, 50)}”: ${(err as Error).message}`);
@@ -252,12 +328,12 @@ export async function sync(
       }
 
       // Payroll (RazorpayX etc.): "salary credited" emails and the payslip / Form 16 PDFs attached to them.
-      log("Searching payroll emails…");
+      begin(3, "Searching payroll emails…");
       // Salary-only emails are re-checked each sync (cheap, no model call) so a payslip that was locked
       // gets read once its password is added.
       const payIds = (await searchIds(email, payrollQuery(startedAt - PAYROLL_LOOKBACK_DAYS * 86400), 60)).filter((id) => !knownPayroll.has(id));
       if (payIds.length) {
-        const emails = await fetchAll(payIds, "Fetching payroll emails");
+        const emails = await fetchAll(payIds, "Fetching payroll emails", (f) => f * 0.5);
         let locked = 0;
         const haveMonth = (m: string) => [...data.payslips, ...newPayslips].some((p) => p.month === m);
         const allCredits = [...data.transactions, ...newTxns].filter((t) => t.direction === "credit");
@@ -277,6 +353,7 @@ export async function sync(
               category: "Salary",
               source: { account: email, messageId: e.id, parser: "payroll", receivedAt: e.date.toISOString() },
             });
+            note(txnLine(newTxns[newTxns.length - 1]));
           }
           const pdfs = e.attachments.filter((a) => a.filename.toLowerCase().endsWith(".pdf"));
           const hint = payMonthHint(e.text, pdfs.map((a) => a.filename));
@@ -285,10 +362,16 @@ export async function sync(
             try {
               const bytes = await getAttachment(email, e.id, pdf.attachmentId);
               const { input } = await loadBytes(bytes, pdf.filename, "application/pdf", knownPasswords(config));
-              log(`Reading ${pdf.filename}…`);
+              log(`Reading ${pdf.filename} with OpenAI…`, 0.5 + (0.5 * emails.indexOf(e)) / emails.length);
               const rec = payrollRecord(await reader.read(input, pdf.filename), src, day);
-              if (rec?.payslip) newPayslips.push(rec.payslip);
-              if (rec?.taxDoc) newTaxDocs.push(rec.taxDoc);
+              if (rec?.payslip) {
+                newPayslips.push(rec.payslip);
+                note(`${rec.payslip.month} · Payslip`);
+              }
+              if (rec?.taxDoc) {
+                newTaxDocs.push(rec.taxDoc);
+                note(`FY ${rec.taxDoc.fy} · Form 16`);
+              }
             } catch (err) {
               if (err instanceof NeedsPasswordError) locked++;
               else warnings.push(`${pdf.filename}: ${(err as Error).message}`);
@@ -300,19 +383,22 @@ export async function sync(
 
       // CAS statements. Not tied to the sync cursor: any recent CAS email that isn't saved yet
       // (e.g. it failed for want of a password) is retried on every sync.
-      log("Searching CAS statements…");
+      begin(4, "Searching CAS statements…");
       const casIds = (await searchIds(email, casQuery(startedAt - CAS_LOOKBACK_DAYS * 86400), 20)).filter((id) => !knownStatements.has(id) && !skippedCas.has(id));
       // pdf.js is ~1MB; only load it when there is a statement to read.
       const { pdfToLines, WrongPasswordError } = casIds.length ? await import("./parsers/cas/pdf") : ({} as typeof import("./parsers/cas/pdf"));
-      for (const id of casIds) {
+      for (const [n, id] of casIds.entries()) {
         const msg = await getEmail(email, id);
         for (const att of msg.attachments.filter((a) => a.filename.toLowerCase().endsWith(".pdf"))) {
-          log(`Parsing ${att.filename}…`);
+          log(`Parsing ${att.filename}…`, n / casIds.length);
           try {
             const bytes = await getAttachment(email, id, att.attachmentId);
             const lines = await pdfToLines(bytes, config.casPassword);
             const stmt = parseCAS(lines, { kind: "gmail", account: email, messageId: id });
-            if (isCompleteStatement(stmt)) newStatements.push(stmt);
+            if (isCompleteStatement(stmt)) {
+              newStatements.push(stmt);
+              note(`${att.filename} · CAS statement`);
+            }
             // Account statements / confirmations for one folio also come from CAMS; they aren't a CAS.
             else skippedCas.add(id);
           } catch (e) {
@@ -320,6 +406,8 @@ export async function sync(
           }
         }
       }
+      within = 1;
+      log("Done with this inbox");
       account.syncedUntil = startedAt;
     } catch (e) {
       // Keep what this account produced so far; its cursor stays put so the next sync resumes.
@@ -349,7 +437,10 @@ export async function sync(
   if (nothing && JSON.stringify(config) === JSON.stringify(data.config)) {
     return result;
   }
-  onProgress({ message: "Saving to GitHub…" });
+  stage = SYNC_STAGES.length;
+  within = 0;
+  accountIndex = config.accounts.length;
+  emit("Saving to GitHub…");
   const files: Record<string, unknown> = {
     "config.json": config,
     ...monthShards(data.transactions, newTxns, updated),

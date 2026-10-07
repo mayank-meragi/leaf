@@ -1,11 +1,10 @@
 // Reads the conditions of an insurance policy (what decides how a claim pays) from its document.
 // Numbers use -1 and enums use "not_stated" for anything the document doesn't say, so nothing is guessed.
 
-import { GoogleGenAI } from "@google/genai";
 import { z } from "zod";
 import type { PolicyTerms } from "@/types";
 import type { DocInput } from "./documents";
-import { DEFAULT_MODEL } from "./extract";
+import { DEFAULT_MODEL, generateJson, type Part } from "./llm";
 
 const yn = z.enum(["yes", "no", "not_stated"]);
 
@@ -54,23 +53,14 @@ export function toTerms(r: Raw): PolicyTerms {
 }
 
 export class PolicyReader {
-  private ai: GoogleGenAI;
-
   constructor(
-    apiKey: string,
+    private apiKey: string,
     private model = DEFAULT_MODEL,
   ) {
-    this.ai = new GoogleGenAI({ apiKey });
   }
 
   async read(input: DocInput, fileName: string): Promise<PolicyTerms> {
-    const parts = "text" in input ? [{ text: `File: ${fileName}\n\n${input.text.slice(0, 200_000)}` }] : [{ inlineData: input.inline }, { text: `File: ${fileName}` }];
-    const res = await this.ai.models.generateContent({
-      model: this.model,
-      contents: [{ role: "user", parts }],
-      config: { systemInstruction: SYSTEM, responseMimeType: "application/json", responseJsonSchema: z.toJSONSchema(TermsSchema), temperature: 0 },
-    });
-    if (!res.text) throw new Error(`Gemini returned no output (${res.candidates?.[0]?.finishReason ?? "unknown"})`);
-    return toTerms(TermsSchema.parse(JSON.parse(res.text)));
+    const parts: Part[] = "text" in input ? [{ text: `File: ${fileName}\n\n${input.text.slice(0, 200_000)}` }] : [{ inline: input.inline }, { text: `File: ${fileName}` }];
+    return toTerms(await generateJson({ apiKey: this.apiKey, model: this.model, system: SYSTEM, parts, schema: TermsSchema }));
   }
 }

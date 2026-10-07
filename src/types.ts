@@ -14,8 +14,8 @@ export interface LeafConfig {
   accounts: GmailAccount[];
   /** Google OAuth client ID (not a secret), so every device can sign in to Gmail. */
   googleClientId?: string;
-  /** Opt-in copy of the Gemini key, so other devices (e.g. a phone) can sync without re-entering it. */
-  geminiKey?: string;
+  /** Opt-in copy of the OpenAI key, so other devices (e.g. a phone) can sync without re-entering it. */
+  openaiKey?: string;
   /** Password for CAS PDFs (CAMS/KFintech use the PAN in upper case). Stored in the private data repo. */
   casPassword?: string;
   /** Passwords for other protected documents, keyed by `DocKind` (e.g. NPS statements, payslips). */

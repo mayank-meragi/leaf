@@ -1,6 +1,14 @@
 import { useId, useState } from "react";
 import { day } from "@/lib/format";
 
+/** A shaded range between two values per date, drawn behind the lines. */
+export interface ChartBand {
+  key: string;
+  label: string;
+  color: string;
+  points: { date: string; lo: number; hi: number }[];
+}
+
 export interface ChartSeries {
   key: string;
   label: string;
@@ -25,16 +33,16 @@ export function compactINR(n: number) {
 }
 
 /** Lines over a shared date axis, with a crosshair that reads out every series at the hovered date. */
-export default function LineChart({ series, label }: { series: ChartSeries[]; label: string }) {
+export default function LineChart({ series, label, bands = [] }: { series: ChartSeries[]; label: string; bands?: ChartBand[] }) {
   const id = useId();
   const [hover, setHover] = useState<number | null>(null);
-  const dates = [...new Set(series.flatMap((s) => s.points.map((p) => p.date)))].sort();
+  const dates = [...new Set([...series.flatMap((s) => s.points.map((p) => p.date)), ...bands.flatMap((b) => b.points.map((p) => p.date))])].sort();
   if (dates.length < 2) return null;
 
   const t = (d: string) => Date.parse(`${d}T00:00:00Z`);
   const t0 = t(dates[0]);
   const t1 = t(dates.at(-1)!);
-  const vals = series.flatMap((s) => s.points.map((p) => p.v));
+  const vals = [...series.flatMap((s) => s.points.map((p) => p.v)), ...bands.flatMap((b) => b.points.flatMap((p) => [p.lo, p.hi]))];
   const lo = Math.min(0, ...vals);
   const hi = Math.max(...vals, 1);
   const x = (d: string) => M.l + ((t(d) - t0) / Math.max(1, t1 - t0)) * (W - M.l - M.r);
@@ -60,9 +68,23 @@ export default function LineChart({ series, label }: { series: ChartSeries[]; la
             {s.label}
           </span>
         ))}
+        {bands.map((b) => (
+          <span key={b.key} className="flex items-center gap-1.5">
+            <span className="inline-block h-2.5 w-4 rounded-sm" style={{ background: b.color, opacity: 0.3 }} />
+            {b.label}
+          </span>
+        ))}
         {at && (
           <span className="ml-auto tabular-nums text-foreground">
             {day(at)}
+            {bands.map((b) => {
+              const p = b.points.find((q) => q.date === at);
+              return p ? (
+                <span key={b.key} className="ml-3 text-muted-foreground">
+                  {compactINR(p.lo)}–{compactINR(p.hi)}
+                </span>
+              ) : null;
+            })}
             {series.map((s) => {
               const p = s.points.find((q) => q.date === at);
               return p ? (
@@ -101,6 +123,14 @@ export default function LineChart({ series, label }: { series: ChartSeries[]; la
         ))}
         <text x={M.l} y={H - 4} className="fill-muted-foreground text-[11px]">{day(dates[0])}</text>
         <text x={W - M.r} y={H - 4} textAnchor="end" className="fill-muted-foreground text-[11px]">{day(dates.at(-1)!)}</text>
+        {bands.map((b) => (
+          <path
+            key={`${b.key}-band`}
+            d={`${b.points.map((p, i) => `${i ? "L" : "M"}${x(p.date).toFixed(1)},${y(p.hi).toFixed(1)}`).join("")}${[...b.points].reverse().map((p) => `L${x(p.date).toFixed(1)},${y(p.lo).toFixed(1)}`).join("")}Z`}
+            fill={b.color}
+            fillOpacity="0.16"
+          />
+        ))}
         {series.map((s) =>
           s.dashed ? null : (
             <path

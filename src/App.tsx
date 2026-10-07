@@ -10,6 +10,7 @@ import {
   RefreshCwIcon,
   SettingsIcon,
   CandlestickChartIcon,
+  TelescopeIcon,
   TrendingUpIcon,
   WalletIcon,
   type LucideIcon,
@@ -33,6 +34,7 @@ import Insurance from "./components/Insurance";
 import Funds from "./components/Funds";
 import Stocks from "./components/Stocks";
 import NetWorth from "./components/NetWorth";
+import Forecast from "./components/Forecast";
 import Spending from "./components/Spending";
 import SettingsView from "./components/SettingsView";
 import SignInGate from "./components/SignInGate";
@@ -47,6 +49,7 @@ const TAB_ICONS: Record<Tab, LucideIcon> = {
   Home: LayoutDashboardIcon,
   Spending: WalletIcon,
   "Net worth": LandmarkIcon,
+  Forecast: TelescopeIcon,
   "Mutual funds": TrendingUpIcon,
   Stocks: CandlestickChartIcon,
   EPF: PiggyBankIcon,
@@ -256,6 +259,8 @@ function Leaf({ settings, onSignOut, onSettings }: { settings: Settings; onSignO
         <Spending store={store} data={data} reload={reload} setData={setData} initialTab={section} />
       ) : tab === "Net worth" ? (
         <NetWorth store={store} data={data} reload={reload} setData={setData} onOpenFunds={() => goTo("Mutual funds")} onOpenEpf={() => goTo("EPF")} onOpenStocks={() => goTo("Stocks")} />
+      ) : tab === "Forecast" ? (
+        <Forecast store={store} data={data} reload={reload} setData={setData} />
       ) : tab === "Mutual funds" ? (
         <Funds store={store} data={data} reload={reload} setData={setData} />
       ) : tab === "Stocks" ? (

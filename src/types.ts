@@ -1,3 +1,4 @@
+import type { Levers } from "./lib/forecast";
 // Shapes of everything Leaf persists in the data repo.
 
 export type ISODate = string; // YYYY-MM-DD
@@ -35,8 +36,31 @@ export interface LeafConfig {
   /** AMFI scheme code of the index fund used as the benchmark for mutual fund returns. */
   benchmark?: number;
   goals?: Goal[];
+  /** Net worth forecast: the plan it starts from and the "what if" scenarios you saved. */
+  forecast?: { plan: ForecastPlan; scenarios: ForecastScenario[] };
   /** Ids of tracked accounts the user deleted, so a later Sync doesn't recreate them from the same emails. */
   deletedAccounts?: string[];
+}
+
+/** What a forecast starts from; shared by every scenario. */
+export interface ForecastPlan {
+  age: number;
+  retireAge: number;
+  incomeGrowth: number;
+  inflation: number;
+  equityReturn?: number;
+  /** Yearly swings in equity, as a fraction (0.16 = 16%). */
+  equityVol?: number;
+  /** Retirement corpus to aim for, in today's rupees. */
+  target?: number;
+  /** Figures typed over the ones read from your data. */
+  overrides: { income?: number; expenses?: number; sip?: number };
+}
+
+export interface ForecastScenario {
+  id: string;
+  name: string;
+  levers: Levers;
 }
 
 export interface Goal {
